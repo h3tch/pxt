@@ -1,0 +1,9 @@
+[package]
+name = "rs_package"
+version = "0.1.0"
+authors = ["Michael Hecher"]
+
+[lib]
+name = "lib"
+path = "lib.rs"
+crate-type = ["cdylib"]
