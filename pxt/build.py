@@ -302,6 +302,59 @@ def cuda(file: str, force: bool=False, **kwargs) -> Callable:
     return wrapper if pxt.helpers.is_called_as_decorator() else wrapper(None)
 
 
+def cython(file: str, **kwargs):
+    def wrapper(func):
+        global kw_include_dirs, _pxt_includes
+
+        # make sure Cython is installed
+        if importlib.util.find_spec('Cython') is None:
+            raise RuntimeError('"Cython" module could not be found. Please '
+                               'make sure you have Cython installed.')
+
+        import Cython.Build
+
+        # get the package name and folder of the decorated function
+        parent = inspect.currentframe().f_back
+        if func is None:
+            parent = parent.f_back
+
+        # gather relevant compile path information
+        _, package_folder, tmp_folder = _get_build_infos(parent, file)
+        namespace = os.path.splitext(os.path.split(file)[1])[0]
+
+        # use keyword argument helper class
+        kw_args = pxt.kwargs.KwArgs(kwargs)
+        include_dirs = kw_args.append(kw_include_dirs, _pxt_includes)
+
+        with pxt.helpers.chdir(package_folder):
+            binary_file = pxt.helpers.get_binary_name(file)
+            binary_name = os.path.split(binary_file)[1]
+            dst_path = os.path.join(package_folder, binary_name)
+
+            # compile the extension
+            extension = distutils.core.Extension(namespace, sources=[file], **kw_args)
+            extensions = Cython.Build.cythonize(extension, include_path=include_dirs)
+            setuptools.setup(script_args=['build', '--build-base={}'.format(tmp_folder)],
+                             ext_modules=extensions, zip_safe=False)
+
+            # copy the compiled files from the temporary
+            # directory to their destination folder
+            tmp_path = pxt.helpers.recursive_file_search(tmp_folder, binary_name)
+            if len(tmp_path) == 0:
+                raise FileNotFoundError('Could not find "{}" in the output folder "{}". '
+                                        'Compilation might have failed'.format(binary_name, tmp_folder))
+            shutil.copyfile(tmp_path[0], dst_path)
+
+            # A new module has been created and should be immediately importable
+            # by other modules. Hence, the import caches need to be invalidated.
+            importlib.invalidate_caches()
+
+            return func if func is not None else dst_path
+
+    # ether use this function as a decorator or a normal function
+    return wrapper if pxt.helpers.is_called_as_decorator() else wrapper(None)
+
+
 def _find_c_include_files(source: str):
     """
     Parse the specified source code for #include "..." files.
