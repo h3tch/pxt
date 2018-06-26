@@ -61,7 +61,7 @@ class CTypeConverter(object):
     python types to C types and the result C type back into a python type.
     """
 
-    def __init__(self, function_pointer, arg_types, result_type):
+    def __init__(self, function_pointer, arg_types, arg_default, result_type):
         """
         Constructor.
 
@@ -71,6 +71,8 @@ class CTypeConverter(object):
             A function pointer to an extension function.
         arg_types
             The argument types of the respective decorated python function.
+        arg_default
+            The default values of the respective arguments.
         result_type
             The result type of the respective decorated python function.
         """
@@ -82,6 +84,7 @@ class CTypeConverter(object):
 
         # set input argument types
         self._function.argtypes = [py2ctype[py_type] for py_type in arg_types]
+        self._arg_default = arg_default
 
         # set result type
         if result_type in py2ctype:
@@ -92,4 +95,5 @@ class CTypeConverter(object):
             self._function.restype = result_type
 
     def __call__(self, *args):
+        args = args + self._arg_default[len(args):]
         return self._function(*args)

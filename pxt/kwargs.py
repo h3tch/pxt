@@ -14,6 +14,9 @@ class KwArgs(dict):
         """
         super().__init__(kwargs)
 
+    def try_get(self, key, default=None):
+        return self[key] if key in self else default
+
     def extract(self, *keys):
         """
         Extract the specified key(s) from the keyword arguments (`kwargs`).

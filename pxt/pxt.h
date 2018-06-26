@@ -71,6 +71,7 @@ const int MAX_DATA_DIMS = 3;
 
 enum NpyType : int32_t
 {
+    invalid = -1,
     boolean = 0,
     int8 = 1,
     uint8 = 2,
@@ -94,178 +95,140 @@ class NpyArray
 {
 public:
     // Create an empty PyData structure.
-    NpyArray() : data(0)
+    NpyArray() : numpy_array(0), owner(false)
     {
-        free();
     }
 
-    NpyArray(PyObject* o)
+    NpyArray(const NpyArray& other) : numpy_array(other.numpy_array), owner(false)
     {
-        PyArrayObject* a = (PyArrayObject*) PyArray_FromAny(
-			o, 0, 0, 0, NPY_ARRAY_C_CONTIGUOUS, 0);
-
-        if (a == 0)
-        {
-            PyErr_SetString(PyExc_ValueError, "Could not convert 'PyObject*' to 'NpyArray'.");
-            return;
-        }
-
-        data = PyArray_DATA(a);
-		type = (NpyType)PyArray_TYPE(a);
-		ndim = PyArray_NDIM(a);
-		for (int i = 0; i < (int)ndim; i++)
-		    dims[i] = (uint32_t)PyArray_DIM(a, i);
-		owner = false;
     }
 
-    // Create a new PyData structure and allocate memory.
-    NpyArray(NpyType type, int ndim, uint32_t* dims) : data(0)
+    NpyArray(PyObject* o, NpyType type=NpyType::invalid, int ndim=0) : NpyArray()
     {
-        alloc(type, ndim, dims);
+        PyArray_Descr* dtype = type < 0 ? 0 : PyArray_DescrFromType((int)type);
+        numpy_array = (PyArrayObject*)PyArray_FromAny(o, dtype, ndim, ndim, NPY_ARRAY_C_CONTIGUOUS, 0);
     }
 
-    // Create a new PyData structure and allocate memory.
-    NpyArray(NpyType type, int ndim, uint32_t dim0, ...) : data(0)
+    NpyArray(NpyType type, int ndim, uint32_t* dims) : NpyArray()
     {
-        va_list args;
-        va_start(args, dim0);
-
-        uint32_t dims[MAX_DATA_DIMS];
-        dims[0] = dim0;
-        for (int i = 1; i < MAX_DATA_DIMS; i++)
-            dims[i] = i < ndim ? va_arg(args, uint32_t) : 0;
-
-        va_end(args);
-
-        alloc(type, ndim, dims);
-    }
-
-    PyObject* asPyObject()
-    {
-        void* ptr = data;
-
-        // In the case of numpy owning the data, we need to copy it,
-        // because PyData is only guaranteed to be valid within an
-        // external function call and has no knowledge of when the owner
-        // releases/free the data. Hence, returning a PyData to python
-        // without owning the data can lead to segmentation faults if the
-        // owner frees the memory while the PyData object is still used.
-        if (!owner)
-        {
-            auto n = nbytes();
-            ptr = std::malloc(n);
-            std::memcpy(ptr, data, n);
-        }
-
         npy_intp np_dims[NPY_MAXDIMS];
         for (uint8_t i = 0; i < ndim; i++)
             np_dims[i] = (npy_intp)dims[i];
 
-        // create new numpy array from existing data
-        auto ndarray = PyArray_SimpleNewFromData((int)ndim, np_dims, (int)type, ptr);
-        // make the numpy array own the memory so we do not have to manage it
-        PyArray_ENABLEFLAGS((PyArrayObject*)ndarray, NPY_OWNDATA);
-
-        return (PyObject*)ndarray;
+        numpy_array = (PyArrayObject*)PyArray_SimpleNew(ndim, np_dims, (int)type);
+        owner = true;
     }
 
-    // Allocate memory and initialize the PyData structure.
-    void alloc(NpyType type, int ndim, uint32_t* dims)
+    NpyArray(NpyType type, int ndim, npy_intp* dims) : NpyArray()
     {
-        free();
-        this->type = type;
-        this->ndim = ndim;
-
-        for (int i = 0; i < MAX_DATA_DIMS; i++)
-            this->dims[i] = i < ndim ? dims[i] : 0;
-
-        this->data = std::malloc(nbytes());
-        this->owner = true;
+        numpy_array = (PyArrayObject*)PyArray_SimpleNew(ndim, dims, (int)type);
+        owner = true;
     }
 
-    // Free the allocated memory if necessary and initialize
-    // the structure to be empty.
-    void free()
+    NpyArray(NpyType type, int ndim, uint32_t dim0, ...) : NpyArray()
     {
-        type = NpyType::boolean;
-        ndim = 0;
-        for (int i = 0; i < MAX_DATA_DIMS; i++)
-            dims[i] = 0;
-        if (owner && data != 0)
-        {
-            std::free(data);
-            data = 0;
-        }
+        va_list args;
+        va_start(args, dim0);
+
+        npy_intp np_dims[MAX_DATA_DIMS];
+        np_dims[0] = dim0;
+        for (int i = 1; i < MAX_DATA_DIMS; i++)
+            np_dims[i] = i < ndim ? (npy_intp)va_arg(args, uint32_t) : 0;
+
+        va_end(args);
+
+        numpy_array = (PyArrayObject*)PyArray_SimpleNew(ndim, np_dims, (int)type);
+        owner = true;
+    }
+
+    ~NpyArray()
+    {
+        if (owner)
+            PyArray_XDECREF(numpy_array);
+        numpy_array = 0;
         owner = false;
     }
 
-    // The size of a single element.
-    int element_size()
+    static NpyArray empty_like(NpyArray& other)
     {
-        return element_size(type);
+        return NpyArray(other.type(), other.ndim(), other.shape());
     }
 
-    // The size of a single element of the specified type.
-    static int element_size(NpyType type)
+    inline PyObject* py_return()
     {
-        size_t size[] = {
-            sizeof(bool),
-            sizeof(int8_t),
-            sizeof(uint8_t),
-            sizeof(int16_t),
-            sizeof(uint16_t),
-            sizeof(int32_t),
-            sizeof(uint32_t),
-            sizeof(int),
-            sizeof(unsigned int),
-            sizeof(int64_t),
-            sizeof(uint64_t),
-            sizeof(float),
-            sizeof(double),
-        };
-        const int32_t t = (int32_t)type;
-        return 0 <= t && t <= 12 ? size[t] : 0;
+        if (owner)
+            Py_XINCREF((PyObject*)numpy_array);
+        return (PyObject*)numpy_array;
     }
 
-    // The number of elements the PyData structure can hold.
-    int size()
+    inline NpyType type()
     {
-        return size(ndim, dims);
+        return (NpyType)PyArray_TYPE(numpy_array);
     }
 
-    // The number of elements of the specified array dimensions.
-    static int size(int ndim, uint32_t* dims)
+    inline PyArray_Descr* dtype()
     {
-        if (ndim <= 0 || ndim > MAX_DATA_DIMS)
-            return 0;
-        int n = 1;
-        for (int i = 0; i < ndim; i++)
-            n *= dims[i];
-        return n;
+        return PyArray_DTYPE(numpy_array);
     }
 
-    // The number of bytes the PyData structure can hold.
-    int nbytes()
+    inline int ndim()
     {
-        return size() * element_size();
+        return PyArray_NDIM(numpy_array);
     }
 
-    // The number of elements of the specified array.
-    static int nbytes(NpyType type, int ndim, uint32_t* dims)
+    inline npy_intp* shape()
     {
-        return size(ndim, dims) * element_size(type);
+        return PyArray_SHAPE(numpy_array);
+    }
+
+    inline int shape(int i)
+    {
+        return (int)PyArray_DIM(numpy_array, i);
     }
 
     template<typename T>
-    T* cast()
+    inline T& get(int i0, int i1=0, int i2=0)
     {
-        return (T*)data;
+        npy_intp ptr[MAX_DATA_DIMS];
+        ptr[0] = i0;
+        ptr[1] = i1;
+        ptr[2] = i2;
+        return *(T*)PyArray_GetPtr(numpy_array, ptr);
     }
 
-    void* data;
-    NpyType type;
-    int ndim;
-    uint32_t dims[MAX_DATA_DIMS];
+    inline int element_size(NpyType type)
+    {
+        return (int)PyArray_ITEMSIZE(numpy_array);
+    }
+
+    inline int size()
+    {
+        return (int)PyArray_SIZE(numpy_array);
+    }
+
+    inline int nbytes()
+    {
+        return (int)PyArray_NBYTES(numpy_array);
+    }
+
+    inline void* data()
+    {
+        return PyArray_DATA(numpy_array);
+    }
+
+    template<typename T>
+    inline T* cast()
+    {
+        return (T*)PyArray_DATA(numpy_array);
+    }
+
+    int refcount()
+    {
+        return numpy_array ? PyArray_REFCOUNT(numpy_array) : 0;
+    }
+
+private:
+    PyArrayObject* numpy_array;
     bool owner;
 };
 
@@ -284,6 +247,7 @@ inline PyObject* c2py(uint32_t value) { return PyLong_FromUnsignedLong((unsigned
 inline PyObject* c2py(uint64_t value) { return PyLong_FromUnsignedLongLong((unsigned long long)value); }
 inline PyObject* c2py(float value) { return PyFloat_FromDouble((double)value); }
 inline PyObject* c2py(double value) { return PyFloat_FromDouble((double)value); }
+inline PyObject* c2py(NpyArray value) { return value.py_return(); }
 inline PyObject* c2py(PyObject* value)
 {
     if (value == Py_None)
@@ -339,5 +303,7 @@ PyObject* PyResult(Args... args)
 
     return tuple;
 }
+
+#define PyReturnOnErr(return_value) { if (PyErr_Occurred()) { return return_value; } }
 
 #endif

@@ -117,9 +117,10 @@ def lib(library: str, **kwargs) -> Callable:
             sig = inspect.signature(func)
             # Extract the argument types of the function.
             arg_types = [sig.parameters[name].annotation for name in sig.parameters]
+            arg_default = tuple(sig.parameters[name].default for name in sig.parameters)
             # Extract the return type of the function.
             result_type = sig.return_annotation
-            return pxt.cpp.CTypeConverter(function_pointer, arg_types, result_type)
+            return pxt.cpp.CTypeConverter(function_pointer, arg_types, arg_default, result_type)
 
         # raise an exception if requested
         if raise_exception:

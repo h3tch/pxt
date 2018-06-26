@@ -25,75 +25,6 @@ _pxt_includes = [os.path.abspath(os.path.join(os.path.dirname(__file__), '..')),
 _cpp_include_pattern = re.compile(r'^\s*#include\s+"[^"]*"', re.MULTILINE)
 
 
-def _find_c_include_files(source: str):
-    """
-    Parse the specified source code for #include "..." files.
-
-    Parameters
-    ----------
-    source : str
-        C/C++ source code to be parsed.
-
-    Returns
-    -------
-    include_files : List[str]
-        Returns all include files in the source code.
-    """
-    global _cpp_include_pattern
-    include_file_iter = _cpp_include_pattern.findall(source)
-    return [include[include.index('"') + 1:-1] for include in include_file_iter]
-
-
-def _get_build_infos(parent_frame: types.FrameType, file: str):
-    """
-    Extract some commonly used build information from
-    the provided input parameters.
-
-    Parameters
-    ----------
-    parent_frame : types.FrameType
-        The frame of the caller.
-    file : str
-        The relative or absolute path of the source file.
-
-    Returns
-    -------
-    namespace : str
-        The namespace of the binary module.
-    package_folder : str
-        The folder of the package from which the build
-        function/decorator is called.
-    tmp_folder : str
-        The temporary folder in which build and compile
-        files should be stored.
-    """
-    package_folder = os.path.dirname(parent_frame.f_locals['__file__'])
-    package_name = parent_frame.f_locals['__package__']
-
-    # get the absolute path of the source file
-    file_path = file if os.path.isabs(file) else os.path.abspath(os.path.join(package_folder, file))
-
-    if not os.path.exists(file_path):
-        raise FileNotFoundError('The file {} does not exist.'.format(file_path))
-
-    # get the namespace fo the module that should be compiled
-    module_path = os.path.splitext(file_path)[0]
-    if not module_path.startswith(package_folder):
-        raise AssertionError('The source file {} has to be located in the same module'
-                             'or submodule as the @cpp decorated function.'.format(module_path))
-    namespace = package_name + module_path[len(package_folder):].replace(os.path.sep, '.')
-
-    # generate path for temporary files
-    if platform.system() == 'Windows':
-        module_path = module_path.replace(':', '')
-    elif module_path.startswith('/'):
-        module_path = module_path[1:]
-
-    tmp_folder = os.path.join(tempfile.gettempdir(), 'pxt', module_path)
-
-    return namespace, package_folder, tmp_folder
-
-
 def rust(cargo_file: str, name: str=None, force: bool=False, **kwargs) -> Callable:
     """
     Compile and build a RUST source code file into a dynamic library.
@@ -263,14 +194,16 @@ def cpp(file: str, force: bool=False, **kwargs) -> Callable:
                         return func if func is not None else dst_path
 
                 # add pxt include directories
-                kw_args.append(kw_include_dirs, _pxt_includes)
+                include_dirs = kw_args.append(kw_include_dirs, _pxt_includes)
+                kw_args[kw_include_dirs] = [_module_dir(d) if isinstance(d, types.ModuleType) else d
+                                            for d in include_dirs]
 
                 # create distutils extension
-                module = distutils.core.Extension(namespace, sources=[file], **kw_args)
+                extension = distutils.core.Extension(namespace, sources=[file], **kw_args)
 
                 # compile the extension
                 distutils.core.setup(script_args=['build', '--build-base={}'.format(tmp_folder), '--force'],
-                                     ext_modules=[module], zip_safe=False)
+                                     ext_modules=[extension], zip_safe=False)
 
                 # copy the compiled files from the temporary
                 # directory to their destination folder
@@ -336,6 +269,8 @@ def cuda(file: str, force: bool=False, **kwargs) -> Callable:
             if not force:
                 # get the source file list
                 include_dirs = pxt.kwargs.KwArgs(kwargs).append(kw_include_dirs, _pxt_includes)
+                include_dirs = [_module_dir(d) if isinstance(d, types.ModuleType) else d
+                                for d in include_dirs]
                 source_files = pxt.helpers.get_source_list(file_path, include_dirs, _find_c_include_files)
 
                 # get target and source file timestamps
@@ -365,3 +300,76 @@ def cuda(file: str, force: bool=False, **kwargs) -> Callable:
 
     # ether use this function as a decorator or a normal function
     return wrapper if pxt.helpers.is_called_as_decorator() else wrapper(None)
+
+
+def _find_c_include_files(source: str):
+    """
+    Parse the specified source code for #include "..." files.
+
+    Parameters
+    ----------
+    source : str
+        C/C++ source code to be parsed.
+
+    Returns
+    -------
+    include_files : List[str]
+        Returns all include files in the source code.
+    """
+    global _cpp_include_pattern
+    include_file_iter = _cpp_include_pattern.findall(source)
+    return [include[include.index('"') + 1:-1] for include in include_file_iter]
+
+
+def _get_build_infos(parent_frame: types.FrameType, file: str):
+    """
+    Extract some commonly used build information from
+    the provided input parameters.
+
+    Parameters
+    ----------
+    parent_frame : types.FrameType
+        The frame of the caller.
+    file : str
+        The relative or absolute path of the source file.
+
+    Returns
+    -------
+    namespace : str
+        The namespace of the binary module.
+    package_folder : str
+        The folder of the package from which the build
+        function/decorator is called.
+    tmp_folder : str
+        The temporary folder in which build and compile
+        files should be stored.
+    """
+    package_folder = os.path.dirname(parent_frame.f_locals['__file__'])
+    package_name = parent_frame.f_locals['__package__']
+
+    # get the absolute path of the source file
+    file_path = file if os.path.isabs(file) else os.path.abspath(os.path.join(package_folder, file))
+
+    if not os.path.exists(file_path):
+        raise FileNotFoundError('The file {} does not exist.'.format(file_path))
+
+    # get the namespace fo the module that should be compiled
+    module_path = os.path.splitext(file_path)[0]
+    if not module_path.startswith(package_folder):
+        raise AssertionError('The source file {} has to be located in the same module'
+                             'or submodule as the @cpp decorated function.'.format(module_path))
+    namespace = package_name + module_path[len(package_folder):].replace(os.path.sep, '.')
+
+    # generate path for temporary files
+    if platform.system() == 'Windows':
+        module_path = module_path.replace(':', '')
+    elif module_path.startswith('/'):
+        module_path = module_path[1:]
+
+    tmp_folder = os.path.join(tempfile.gettempdir(), 'pxt', module_path)
+
+    return namespace, package_folder, tmp_folder
+
+
+def _module_dir(module: str) -> str:
+    return os.path.abspath(os.path.join(os.path.split(module.__file__)[0], os.pardir))
