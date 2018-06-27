@@ -1,5 +1,5 @@
 import ctypes
-from typing import TupleMeta
+import typing
 
 import numpy as np
 
@@ -89,7 +89,7 @@ class CTypeConverter(object):
         # set result type
         if result_type in py2ctype:
             self._function.restype = py2ctype[result_type]
-        elif isinstance(result_type, TupleMeta):
+        elif isinstance(result_type, typing.TupleMeta):
             self._function.restype = ctypes.py_object
         else:
             self._function.restype = result_type

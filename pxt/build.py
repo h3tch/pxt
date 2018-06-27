@@ -7,22 +7,18 @@ import re
 import shutil
 import tempfile
 import types
-import setuptools
-from typing import Callable, Union, Optional
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
+import setuptools
 
 import pxt.helpers
 import pxt.kwargs
 
-kw_include_dirs = 'include_dirs'
-
-_build_cache = []
-
+_kw_include_dirs = 'include_dirs'
+_cpp_include_pattern = re.compile(r'^\s*#include\s+"[^"]*"', re.MULTILINE)
 _pxt_includes = [os.path.abspath(os.path.join(os.path.dirname(__file__), '..')),
                  np.get_include()]
-
-_cpp_include_pattern = re.compile(r'^\s*#include\s+"[^"]*"', re.MULTILINE)
 
 
 def rust(cargo_file: str, name: str=None, force: bool=False, **kwargs) -> Union[Callable, str]:
@@ -160,7 +156,7 @@ def cpp(file: str, force: bool=False, **kwargs) -> Union[Callable, str]:
 
     # the function wrapper to be returned in case the `cpp` function is used as a decorator
     def wrapper(func):
-        global kw_include_dirs, _pxt_includes
+        global _kw_include_dirs, _pxt_includes
 
         # get the package name and folder of the decorated function
         parent = inspect.currentframe().f_back
@@ -194,9 +190,9 @@ def cpp(file: str, force: bool=False, **kwargs) -> Union[Callable, str]:
                         return func if func is not None else dst_path
 
                 # add pxt include directories
-                include_dirs = kw_args.append(kw_include_dirs, _pxt_includes)
-                kw_args[kw_include_dirs] = [_module_dir(d) if isinstance(d, types.ModuleType) else d
-                                            for d in include_dirs]
+                include_dirs = kw_args.append(_kw_include_dirs, _pxt_includes)
+                kw_args[_kw_include_dirs] = [_module_dir(d) if isinstance(d, types.ModuleType) else d
+                                             for d in include_dirs]
 
                 # create distutils extension
                 extension = distutils.core.Extension(namespace, sources=[file], **kw_args)
@@ -239,13 +235,13 @@ def cuda(file: str, force: bool=False, **kwargs) -> Optional[Callable]:
 
     Returns
     -------
-    wrapper : Callable, str
+    wrapper : Callable, None
         If called as a decorator, a wrapper function will be returned.
         Otherwise the path to the binary file will be returned.
     """
 
     def wrapper(func):
-        global kw_include_dirs, _pxt_includes
+        global _kw_include_dirs, _pxt_includes
 
         # make sure pycuda is installed
         if importlib.util.find_spec('pycuda') is None:
@@ -269,7 +265,7 @@ def cuda(file: str, force: bool=False, **kwargs) -> Optional[Callable]:
             # only check for changes if compilation should not be forced
             if not force:
                 # get the source file list
-                include_dirs = pxt.kwargs.KwArgs(kwargs).append(kw_include_dirs, _pxt_includes)
+                include_dirs = pxt.kwargs.KwArgs(kwargs).append(_kw_include_dirs, _pxt_includes)
                 include_dirs = [_module_dir(d) if isinstance(d, types.ModuleType) else d
                                 for d in include_dirs]
                 source_files = pxt.helpers.get_source_list(file_path, include_dirs, _find_c_include_files)
@@ -321,7 +317,7 @@ def cython(file: str, **kwargs) -> Union[Callable, str]:
         Otherwise the path to the binary file will be returned.
     """
     def wrapper(func):
-        global kw_include_dirs, _pxt_includes
+        global _kw_include_dirs, _pxt_includes
 
         # make sure Cython is installed
         if importlib.util.find_spec('Cython') is None:
@@ -341,7 +337,7 @@ def cython(file: str, **kwargs) -> Union[Callable, str]:
 
         # use keyword argument helper class
         kw_args = pxt.kwargs.KwArgs(kwargs)
-        include_dirs = kw_args.append(kw_include_dirs, _pxt_includes)
+        include_dirs = kw_args.append(_kw_include_dirs, _pxt_includes)
 
         with pxt.helpers.chdir(package_folder):
             binary_file = pxt.helpers.get_binary_name(file)
@@ -372,7 +368,7 @@ def cython(file: str, **kwargs) -> Union[Callable, str]:
     return wrapper if pxt.helpers.is_called_as_decorator() else wrapper(None)
 
 
-def _find_c_include_files(source: str):
+def _find_c_include_files(source: str) -> List[str]:
     """
     Parse the specified source code for #include "..." files.
 
@@ -391,7 +387,7 @@ def _find_c_include_files(source: str):
     return [include[include.index('"') + 1:-1] for include in include_file_iter]
 
 
-def _get_build_infos(parent_frame: types.FrameType, file: str):
+def _get_build_infos(parent_frame: types.FrameType, file: str) -> Tuple[str, str, str]:
     """
     Extract some commonly used build information from
     the provided input parameters.
@@ -452,7 +448,7 @@ def _module_dir(module: types.ModuleType) -> str:
 
     Returns
     -------
-    str
+    directory : str
         Returns the absolute path to the module directory.
     """
     return os.path.abspath(os.path.join(os.path.split(module.__file__)[0], os.pardir))

@@ -17,19 +17,20 @@ EXPORT PyObject* np_add(PyObject* a_, PyObject* b_)
     NpyArray a(a_);
     NpyArray b(b_);
 
-    if (PyErr_Occurred())
-        return 0;
+    PyReturnOnErr(0);
 
-    if (a.type != b.type || a.size() != b.size())
+    if (a.type() != b.type() || a.size() != b.size())
     {
         PyErr_SetString(PyExc_TypeError,
-                        "assert(a.type == b.type && a.size() == b.size())");
+                        "assert(a.type() == b.type() && a.size() == b.size())");
         return 0;
     }
 
-    NpyArray c(a.type, a.ndim, a.dims);
+    NpyArray c(a.type(), a.ndim(), a.shape());
 
-    switch(a.type)
+    PyReturnOnErr(0);
+
+    switch(a.type())
     {
     case NpyType::boolean:
         add(a.cast<uint8_t>(), b.cast<uint8_t>(), c.cast<uint8_t>(), a.size());
@@ -73,13 +74,11 @@ EXPORT PyObject* np_add(PyObject* a_, PyObject* b_)
     default: break;
     }
 
-    std::cout << "asPyObjecto\n";
-    return c.asPyObject();
+    return c.py_return();
 }
 
 EXPORT PyObject* return_tuple(PyObject* a, PyObject* b)
 {
-    std::cout << "\n";
     return PyResult(1, 2, 3, a, b);
 }
 

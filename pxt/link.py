@@ -4,26 +4,47 @@ import importlib.util
 import inspect
 import os
 import sys
-from typing import Callable, Iterable, Union
+from typing import Callable
 
 import pxt.cpp
+import pxt.kwargs
 
 # The library cache is use to cache the link
 # libraries that have already been loaded.
 _library_cache = dict()
 
 
-def get_arg(kwargs, arg_names: Union[str, Iterable[str]], default=None):
-    """
-    A helper function to conveniently load optional arguments if they where specified.
-    """
-    for arg_name in ([arg_names] if isinstance(arg_names, str) else arg_names):
-        if arg_name in kwargs:
-            return kwargs[arg_name]
-    return default
-
-
 def mod(module, **kwargs) -> Callable:
+    """
+    This function decorator links the decorated function to a external
+    library function. When the decorated function is called, the external
+    function will be used instead. If no suitable library function could
+    be found, the decorated function itself will be used. In case the
+    ``raise_exception`` argument is set to ``True`` a ```` will be
+    raised if no library function could be found.
+
+    Parameters
+    ----------
+    module : ModuleType
+        The module in which the implementation of the function can be found.
+    kwargs
+        function_name : str, optional
+            Provide the name of the function within the specified library.
+            If not specified, the name of the decorated function will be used.
+        function : str, optional
+            Same as ``function_name``.
+        replacement : Callable
+            Replace the decorated function with the specified "replacement".
+        raise_exception : bool, optional
+            Raise an exception in case not suitable library function
+            could be found (default ``False``).
+
+    Returns
+    -------
+    wrapper : Callable
+        The function wrapper return by the decorator function. See python decorator
+        function specification for detailed information how decorators work.
+    """
     return lib(module.__file__, **kwargs)
 
 
@@ -51,6 +72,8 @@ def lib(library: str, **kwargs) -> Callable:
             If not specified, the name of the decorated function will be used.
         function : str, optional
             Same as ``function_name``.
+        replacement : Callable
+            Replace the decorated function with the specified "replacement".
         raise_exception : bool, optional
             Raise an exception in case not suitable library function
             could be found (default ``False``).
@@ -97,14 +120,15 @@ def lib(library: str, **kwargs) -> Callable:
 
         # CHECK FOR SIMPLE FUNCTION REPLACEMENT
 
-        replacement = get_arg(kwargs, 'replacement')
+        kw_args = pxt.kwargs.KwArgs(kwargs)
+        replacement = kw_args.try_get('replacement')
         if replacement is not None:
             return replacement
 
         # PARSE INPUT PARAMETERS OF THE DECORATOR
 
-        func_name = get_arg(kwargs, ['function', 'function_name'], func.__name__)
-        raise_exception = get_arg(kwargs, ['exception', 'raise_exception'], False)
+        func_name = kw_args.try_get(['function', 'function_name'], func.__name__)
+        raise_exception = kw_args.try_get(['exception', 'raise_exception'], False)
         library_path = _get_library_path()
 
         # FIND THE FIRST FUNCTION IN THE LIST OF MATCHING LIBRARY NAMES
@@ -157,7 +181,7 @@ def cuda(binary_file: str, **kwargs) -> Callable:
         with open(file_path, 'rb') as fp:
             binary_code = fp.read()
 
-        func_name = get_arg(kwargs, ['function', 'function_name'], func.__name__)
+        func_name = pxt.kwargs.KwArgs(kwargs).try_get(['function', 'function_name'], func.__name__)
         mod = pxt.cuda.BinModule(binary_code)
         fn = mod.get_function(func_name)
 

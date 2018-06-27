@@ -1,6 +1,6 @@
 import numpy as np
 import test_cpp
-import test_cu
+# import test_cu
 import test_rs
 # import gc
 # import objgraph
@@ -26,10 +26,9 @@ for _ in range(3):
     # objgraph.show_growth()
 print(tup)
 
-rs = np.empty_like(a, dtype=np.float32)
-test_cu.multiply(rs, a.astype(np.float32), b.astype(np.float32), block=(256, 1, 1), grid=(1, 1))
-
-print(np.max(rs - a * b))
+# rs = np.empty_like(a, dtype=np.float32)
+# test_cu.multiply(rs, a.astype(np.float32), b.astype(np.float32), block=(256, 1, 1), grid=(1, 1))
+# print(np.max(rs - a * b))
 
 rs = test_rs.i_add(4, 6)
 print(rs)

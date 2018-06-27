@@ -1,9 +1,9 @@
 import contextlib
+import distutils.sysconfig
 import glob
 import inspect
 import itertools
 import os
-import distutils.sysconfig
 from typing import Callable, List, Union
 
 
@@ -51,13 +51,13 @@ def get_source_list(filename: str, include_folders: List[str], find_function: Ca
     return list(set(file_paths + list(itertools.chain.from_iterable(include_sets))))
 
 
-def get_binary_name(file: str, ext: str=None) -> str:
+def get_binary_name(binary_file: str, ext: str=None) -> str:
     """
     Convert a filename to its binary counterpart.
 
     Parameters
     ----------
-    file : str
+    binary_file : str
         The filename to be converted into the binary filename.
     ext : str
         Replace the extension of the result with the specified extension.
@@ -68,7 +68,7 @@ def get_binary_name(file: str, ext: str=None) -> str:
         The binary filename of the specified file.
     """
     # replace the file extension with the python extension suffix of the architecture
-    target_file = os.path.splitext(file)[0] + distutils.sysconfig.get_config_var('EXT_SUFFIX')
+    target_file = os.path.splitext(binary_file)[0] + distutils.sysconfig.get_config_var('EXT_SUFFIX')
 
     # replace the suffix extension if requested
     if ext is not None:
@@ -81,24 +81,46 @@ def get_binary_name(file: str, ext: str=None) -> str:
     return target_file
 
 
-def get_module_name(file: str) -> str:
-    filename = os.path.split(file)[1]
+def get_module_name(module_file: str) -> str:
+    """
+    Get module name from the module file name.
+
+    Parameters
+    ----------
+    module_file : str
+        Path to the module file.
+
+    Returns
+    -------
+    name : str
+        Returns the name of the module.
+    """
+    # get the suffix of extension modules (modules can be both,
+    # source files or binary files)
     suffix = distutils.sysconfig.get_config_var('EXT_SUFFIX')
 
+    # extract the module filename
+    filename = os.path.split(module_file)[1]
+
+    # is the module a binary module (then it ends with the
+    # extension suffix)
     if filename.endswith(suffix):
         return filename[:-len(suffix)]
 
+    # get the name and the extension of the module file
     file_name, file_ext = os.path.splitext(filename)
+    # get the architecture and the extension of extension modules
     suffix_arch, suffix_ext = os.path.splitext(suffix)
 
+    # in case the module does not follow the common extension
+    # naming (e.g., user uses her own file extensions)
     if filename.endswith(suffix_arch + file_ext):
         return filename[:-(len(suffix_arch) + len(file_ext))]
 
+    # in case we cannot identify the module type
+    # we return the filename up to the first dot
     dot_index = filename.index('.')
-    if dot_index >= 0:
-        return filename[:dot_index]
-
-    return filename
+    return filename if dot_index < 0 else filename[:dot_index]
 
 
 def is_called_as_decorator() -> bool:

@@ -224,7 +224,7 @@ public:
 
     int refcount()
     {
-        return numpy_array ? PyArray_REFCOUNT(numpy_array) : 0;
+        return numpy_array ? (int)PyArray_REFCOUNT(numpy_array) : 0;
     }
 
 private:
@@ -304,6 +304,7 @@ PyObject* PyResult(Args... args)
     return tuple;
 }
 
+// Utility macro to return a value and exit the function in case an error occurred.
 #define PyReturnOnErr(return_value) { if (PyErr_Occurred()) { return return_value; } }
 
 #endif

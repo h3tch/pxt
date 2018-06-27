@@ -1,3 +1,6 @@
+from typing import Iterable, Union
+
+
 class KwArgs(dict):
     """
     Keyword argument helper class.
@@ -14,7 +17,28 @@ class KwArgs(dict):
         """
         super().__init__(kwargs)
 
-    def try_get(self, key, default=None):
+    def try_get(self, key: Union[Iterable, object], default=None):
+        """
+        Try to get the value to the specified key, but do not throw an
+        exception if is does not exist. Instead return a default value
+        that can also be specified.
+
+        Parameters
+        ----------
+        key : object, Iterable[object]
+            A list of keys indicating the value to search for. All keys are aliases
+            for the same value, hence, the first value of the first key found will be
+            returned.
+        default : object
+            The default value to return in case the key is not in the dictionary.
+
+        Returns
+        -------
+        value : object
+            The key value or the default value in case the key does not exist.
+        """
+        if hasattr(key, '__iter__') and not isinstance(key, str):
+            key = next(iter(k for k in key if k in self), None)
         return self[key] if key in self else default
 
     def extract(self, *keys):

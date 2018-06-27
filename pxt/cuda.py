@@ -8,7 +8,7 @@ import pycuda.compiler
 import pycuda.driver
 import pycuda.tools
 
-context = None
+_context = None
 
 # Python function types for cuda.
 In = typing.Union[pycuda.driver.In, np.ndarray]
@@ -33,17 +33,13 @@ def initialize(auto_free_on_exit: bool=True, enable_profiling: bool=False):
         Automatically uninitialize CUDA on exit.
     enable_profiling : bool
         Initialize CUDA to be used with the System Profiler.
-
-    Returns
-    -------
-
     """
-    global context
-    if context is None:
+    global _context
+    if _context is None:
         pycuda.driver.init()
         device = pycuda.driver.Device(0)
         flags = pycuda.driver.ctx_flags
-        context = device.make_context(flags.SCHED_AUTO | flags.MAP_HOST)
+        _context = device.make_context(flags.SCHED_AUTO | flags.MAP_HOST)
         if auto_free_on_exit:
             atexit.register(free_context)
 
@@ -53,11 +49,11 @@ def initialize(auto_free_on_exit: bool=True, enable_profiling: bool=False):
 
 def free_context():
     """
-    Uninitialize the PyCuda runtime.
+    Free the PyCuda runtime.
     """
-    global context
-    context.pop()
-    context = None
+    global _context
+    _context.pop()
+    _context = None
     pycuda.tools.clear_context_caches()
 
 
