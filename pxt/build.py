@@ -8,7 +8,7 @@ import shutil
 import tempfile
 import types
 import setuptools
-from typing import Callable
+from typing import Callable, Union, Optional
 
 import numpy as np
 
@@ -25,7 +25,7 @@ _pxt_includes = [os.path.abspath(os.path.join(os.path.dirname(__file__), '..')),
 _cpp_include_pattern = re.compile(r'^\s*#include\s+"[^"]*"', re.MULTILINE)
 
 
-def rust(cargo_file: str, name: str=None, force: bool=False, **kwargs) -> Callable:
+def rust(cargo_file: str, name: str=None, force: bool=False, **kwargs) -> Union[Callable, str]:
     """
     Compile and build a RUST source code file into a dynamic library.
 
@@ -44,9 +44,9 @@ def rust(cargo_file: str, name: str=None, force: bool=False, **kwargs) -> Callab
 
     Returns
     -------
-    wrapper : Callable, None
+    wrapper : Callable, str
         If called as a decorator, a wrapper function will be returned.
-        Otherwise `None` will be returned.
+        Otherwise the path to the binary file will be returned.
     """
     def wrapper(func):
         def object2binding(obj):
@@ -137,7 +137,7 @@ def rust(cargo_file: str, name: str=None, force: bool=False, **kwargs) -> Callab
     return wrapper if pxt.helpers.is_called_as_decorator() else wrapper(None)
 
 
-def cpp(file: str, force: bool=False, **kwargs) -> Callable:
+def cpp(file: str, force: bool=False, **kwargs) -> Union[Callable, str]:
     """
     Compile and build a C++ source code file into a dynamic library.
 
@@ -153,9 +153,9 @@ def cpp(file: str, force: bool=False, **kwargs) -> Callable:
 
     Returns
     -------
-    wrapper : Callable, None
+    wrapper : Callable, str
         If called as a decorator, a wrapper function will be returned.
-        Otherwise `None` will be returned.
+        Otherwise the path to the binary file will be returned.
     """
 
     # the function wrapper to be returned in case the `cpp` function is used as a decorator
@@ -223,7 +223,7 @@ def cpp(file: str, force: bool=False, **kwargs) -> Callable:
     return wrapper if pxt.helpers.is_called_as_decorator() else wrapper(None)
 
 
-def cuda(file: str, force: bool=False, **kwargs) -> Callable:
+def cuda(file: str, force: bool=False, **kwargs) -> Optional[Callable]:
     """
     Compile a CUDA source code file into binary CUDA code.
 
@@ -235,12 +235,13 @@ def cuda(file: str, force: bool=False, **kwargs) -> Callable:
         Fore the file to be compiled if `True`. Otherwise only compile
         if there are any changes.
     kwargs
+        Additional arguments for the Extension class.
 
     Returns
     -------
-    wrapper : Callable, None
+    wrapper : Callable, str
         If called as a decorator, a wrapper function will be returned.
-        Otherwise `None` will be returned.
+        Otherwise the path to the binary file will be returned.
     """
 
     def wrapper(func):
@@ -302,7 +303,23 @@ def cuda(file: str, force: bool=False, **kwargs) -> Callable:
     return wrapper if pxt.helpers.is_called_as_decorator() else wrapper(None)
 
 
-def cython(file: str, **kwargs):
+def cython(file: str, **kwargs) -> Union[Callable, str]:
+    """
+    Compile and build a Cython source code file into a dynamic library.
+
+    Parameters
+    ----------
+    file : str
+        The Cython source file to be compiled as a dynamic library.
+    kwargs
+        Additional arguments for the Extension class.
+
+    Returns
+    -------
+    wrapper : Callable, str
+        If called as a decorator, a wrapper function will be returned.
+        Otherwise the path to the binary file will be returned.
+    """
     def wrapper(func):
         global kw_include_dirs, _pxt_includes
 
@@ -424,5 +441,18 @@ def _get_build_infos(parent_frame: types.FrameType, file: str):
     return namespace, package_folder, tmp_folder
 
 
-def _module_dir(module: str) -> str:
+def _module_dir(module: types.ModuleType) -> str:
+    """
+    Get the absolute path to the module directory.
+
+    Parameters
+    ----------
+    module : ModuleType
+        The module.
+
+    Returns
+    -------
+    str
+        Returns the absolute path to the module directory.
+    """
     return os.path.abspath(os.path.join(os.path.split(module.__file__)[0], os.pardir))
