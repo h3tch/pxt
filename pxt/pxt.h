@@ -307,4 +307,6 @@ PyObject* PyResult(Args... args)
 // Utility macro to return a value and exit the function in case an error occurred.
 #define PyReturnOnErr(return_value) { if (PyErr_Occurred()) { return return_value; } }
 
+#define PyReturnErr(err_type, err_message, return_value) { PyErr_SetString(err_type, err_message); return return_value; }
+
 #endif
