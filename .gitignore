@@ -101,3 +101,9 @@ ENV/
 
 # mypy
 .mypy_cache/
+*.so
+*.lock
+*.cubin
+
+# pytest
+.pytest_cache/
