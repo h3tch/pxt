@@ -5,6 +5,21 @@ import pxt.helpers
 
 
 def imp(filename, module_name=None):
+    """
+    Import the specified module file under the provided module name.
+
+    Parameters
+    ----------
+    filename : str
+        The location of the module.
+    module_name : str
+        The module name under which the module will be imported.
+
+    Returns
+    -------
+    module : ModuleType
+        Returns the imported module.
+    """
     if module_name is None:
         module_name = pxt.helpers.get_module_name(filename)
 

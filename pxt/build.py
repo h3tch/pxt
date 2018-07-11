@@ -83,7 +83,6 @@ def rust(cargo_file: str, name: str=None, force: bool=False, **kwargs) -> Union[
         # gather relevant compile path information
         _, package_folder, tmp_path = _get_build_infos(parent_frame, cargo_file)
 
-
         # Change the current working directory to the package folder.
         # This way, the build function can be used the same way by
         # different packages (the working directory is always the package).
