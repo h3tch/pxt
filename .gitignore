@@ -104,3 +104,6 @@ ENV/
 *.so
 *.lock
 *.cubin
+
+# pytest
+.pytest_cache/
