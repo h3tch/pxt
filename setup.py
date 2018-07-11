@@ -20,7 +20,8 @@ tests_require = [
     'pytest-pythonpath', 
     'coverage',
     'pytest-cov', 
-    'pytest-flake8'
+    'pytest-flake8',
+    'hypothesis'
     ] + rust_requires + cuda_requires
 
 class PyTest(TestCommand):
