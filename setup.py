@@ -18,7 +18,8 @@ cuda_requires = []
 tests_require = [
     'pytest', 
     'pytest-pythonpath', 
-    'coverage', 
+    'coverage',
+    'pytest-cov', 
     'pytest-flake8'
     ] + rust_requires + cuda_requires
 
