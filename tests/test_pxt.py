@@ -1,34 +1,37 @@
-import numpy as np
-import test_cpp
-# import test_cu
-import test_rs
+import sys
+
+from hypothesis import given
+import hypothesis.strategies as st
+
+import pxt
+from foo import rs_i_add, rs_no_add, cpp_i_add, cpp_np_add, return_tuple
+
+
 # import gc
 # import objgraph
 
-a, b = np.random.rand(256), np.random.rand(256)
-# gc.set_debug(gc.DEBUG_LEAK)
-# gc.collect()
-print()
+#  gc.set_debug(gc.DEBUG_LEAK)
+#  gc.collect()
 
-# objgraph.show_growth()
-for _ in range(3):
-    c = test_cpp.np_add(a, b)
+# Example using hypothesis
+# interestingly, fails when using sys.maxsize ;)
+@given(st.integers(0, 256), st.integers(0, 256))
+def test_simple_rs_add(x, y):
+    assert x + y == rs_i_add(x, y)
+
+@given(st.integers(0, 256), st.integers(0, 256))
+def test_no_rs_add(x, y):
+    assert x + y == rs_no_add(x, y)
+
+def test_cpp_np_add(a, b):
+    c = cpp_np_add(a, b)
     # objgraph.show_growth()
-print(c)
+    assert c
 
-for _ in range(3):
-    c = test_cpp.i_add(1, 2)
-    # objgraph.show_growth()
-print(c)
+@given(st.integers(0, 256), st.integers(0, 256))
+def test_cpp_i_add(x, y):
+    assert x + y == cpp_i_add(x, y)
 
-for _ in range(3):
-    tup = test_cpp.return_tuple(a, b)
-    # objgraph.show_growth()
-print(tup)
-
-# rs = np.empty_like(a, dtype=np.float32)
-# test_cu.multiply(rs, a.astype(np.float32), b.astype(np.float32), block=(256, 1, 1), grid=(1, 1))
-# print(np.max(rs - a * b))
-
-rs = test_rs.i_add(4, 6)
-print(rs)
+def test_cpp_tupple(a, b):
+    tup = return_tuple(a, b)
+    assert tuple(a,b) == return_tupple(a, b)
