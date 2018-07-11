@@ -83,6 +83,7 @@ def rust(cargo_file: str, name: str=None, force: bool=False, **kwargs) -> Union[
         # gather relevant compile path information
         _, package_folder, tmp_path = _get_build_infos(parent_frame, cargo_file)
 
+
         # Change the current working directory to the package folder.
         # This way, the build function can be used the same way by
         # different packages (the working directory is always the package).
@@ -387,7 +388,7 @@ def _find_c_include_files(source: str) -> List[str]:
     return [include[include.index('"') + 1:-1] for include in include_file_iter]
 
 
-def _get_build_infos(parent_frame: types.FrameType, file: str) -> Tuple[str, str, str]:
+def _get_build_infos(parent_frame: types.FrameType, path: str) -> Tuple[str, str, str]:
     """
     Extract some commonly used build information from
     the provided input parameters.
@@ -396,7 +397,7 @@ def _get_build_infos(parent_frame: types.FrameType, file: str) -> Tuple[str, str
     ----------
     parent_frame : types.FrameType
         The frame of the caller.
-    file : str
+    path : str
         The relative or absolute path of the source file.
 
     Returns
@@ -414,18 +415,17 @@ def _get_build_infos(parent_frame: types.FrameType, file: str) -> Tuple[str, str
     package_name = parent_frame.f_locals['__package__']
 
     # get the absolute path of the source file
-    file_path = file if os.path.isabs(file) else os.path.abspath(os.path.join(package_folder, file))
+    abs_path = path if os.path.isabs(path) else os.path.abspath(os.path.join(package_folder, path))
 
-    if not os.path.exists(file_path):
+    if not os.path.exists(abs_path):
         raise FileNotFoundError('The file {} does not exist.'.format(file_path))
 
     # get the namespace fo the module that should be compiled
-    module_path = os.path.splitext(file_path)[0]
+    module_path = os.path.splitext(abs_path)[0]
     if not module_path.startswith(package_folder):
         raise AssertionError('The source file {} has to be located in the same module'
                              'or submodule as the @cpp decorated function.'.format(module_path))
     namespace = package_name + module_path[len(package_folder):].replace(os.path.sep, '.')
-
     # generate path for temporary files
     if platform.system() == 'Windows':
         module_path = module_path.replace(':', '')
