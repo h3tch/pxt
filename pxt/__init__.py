@@ -1,7 +1,13 @@
 import importlib.util
 
 import pxt.build
+import pxt.cpp
 import pxt.helpers
+import pxt.kwargs
+import pxt.link
+
+if importlib.util.find_spec('pycuda') is not None:
+    import pxt.cuda
 
 
 def imp(filename, module_name=None):
