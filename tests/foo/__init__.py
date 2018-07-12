@@ -37,8 +37,8 @@ def cpp_no_func(a: int, b: int) -> int:
 
 
 if CUDA:
-    @pxt.link.cuda('cuda/multiply.cubin')
-    @pxt.build.cuda('cuda/multiply.cu')
+    @pxt.link.cuda('cu/multiply.cubin')
+    @pxt.build.cuda('cu/multiply.cu')
     def multiply(out: Out, a: In, b: In, **kwargs):
         pass
 
