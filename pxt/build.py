@@ -21,6 +21,41 @@ _pxt_includes = [os.path.abspath(os.path.join(os.path.dirname(__file__), '..')),
                  np.get_include()]
 
 
+def everything(root_dir: str=''):
+    """
+    Build everything
+
+    Parameters
+    ----------
+    root_dir : str
+        The root directory in which to search for pxt code to compile (default
+        is the current working directory).
+    """
+    import glob
+
+    # get the package name and folder of the decorated function
+    caller_file = inspect.currentframe().f_back.f_locals['__file__']
+
+    # find all python files
+    expression = os.path.join(root_dir, '**/*.py')
+    module_names = set([f for f in glob.glob(expression, recursive=True)])
+
+    # prevent recursive imports (do not import the package that tries to
+    # build everything, because it would result in a loop)
+    module_names = [f for f in module_names if os.path.abspath(f) != caller_file]
+
+    # find all files in which pxt is imported and might therefore be used
+    module_names = [f for f in module_names if 'import pxt' in open(f).read()]
+    module_names = [os.path.dirname(f) if os.path.split(f)[1] == '__init__.py' else os.path.splitext(f)[0]
+                    for f in module_names]
+
+    # convert file names to modules
+    modules = [f.replace(os.path.sep, '.') for f in module_names]
+
+    # importing the modules will compile the code
+    _ = [importlib.import_module(m) for m in modules]
+
+
 def rust(cargo_file: str, name: str=None, force: bool=False, **kwargs) -> Union[Callable, str]:
     """
     Compile and build a RUST source code file into a dynamic library.
