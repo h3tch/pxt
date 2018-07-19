@@ -452,7 +452,7 @@ def _get_build_infos(parent_frame: types.FrameType, path: str) -> Tuple[str, str
     abs_path = path if os.path.isabs(path) else os.path.abspath(os.path.join(package_folder, path))
 
     if not os.path.exists(abs_path):
-        raise FileNotFoundError('The file {} does not exist.'.format(file_path))
+        raise FileNotFoundError('The file {} does not exist.'.format(abs_path))
 
     # get the namespace fo the module that should be compiled
     module_path = os.path.splitext(abs_path)[0]
