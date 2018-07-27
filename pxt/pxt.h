@@ -1,6 +1,8 @@
 #ifndef _PXT_H
 #define _PXT_H
 
+#include "numpy/numpyconfig.h"
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include "Python.h"
 #include "numpy/arrayobject.h"
 #include <stddef.h>
@@ -89,40 +91,51 @@ enum NpyType : int32_t
 };
 
 
+class PyGIL
+{
+public:
+    PyGIL() : gil_state()
+    {
+        this->release = PyGILState_Check() == 0;
+        if (this->release)
+            this->gil_state = PyGILState_Ensure();
+    }
+
+    ~PyGIL()
+    {
+        if (this->release)
+            PyGILState_Release(this->gil_state);
+    }
+
+private:
+    PyGILState_STATE gil_state;
+    bool release;
+};
+
+
 // Numpy array helper class
 
 class NpyArray
 {
 public:
     // Create an empty PyData structure.
-    NpyArray() : numpy_array(0), owner(false)
+    NpyArray() : numpy_array(0)
     {
     }
 
-    NpyArray(const NpyArray& other) : numpy_array(other.numpy_array), owner(false)
+    NpyArray(const NpyArray& other) : numpy_array(other.numpy_array)
     {
+//        std::cout << "NpyArray Refcount old - " << this->refcount() << std::endl;
+        this->incref();
+//        std::cout << "NpyArray Refcount new - " << this->refcount() << std::endl;
     }
 
     NpyArray(PyObject* o, NpyType type=NpyType::invalid, int ndim=0) : NpyArray()
     {
         PyArray_Descr* dtype = type < 0 ? 0 : PyArray_DescrFromType((int)type);
+//        std::cout << "PyObject Refcount old - " << Py_REFCNT(o) << std::endl;
         numpy_array = (PyArrayObject*)PyArray_FromAny(o, dtype, ndim, ndim, NPY_ARRAY_C_CONTIGUOUS, 0);
-    }
-
-    NpyArray(NpyType type, int ndim, uint32_t* dims) : NpyArray()
-    {
-        npy_intp np_dims[NPY_MAXDIMS];
-        for (uint8_t i = 0; i < ndim; i++)
-            np_dims[i] = (npy_intp)dims[i];
-
-        numpy_array = (PyArrayObject*)PyArray_SimpleNew(ndim, np_dims, (int)type);
-        owner = true;
-    }
-
-    NpyArray(NpyType type, int ndim, npy_intp* dims) : NpyArray()
-    {
-        numpy_array = (PyArrayObject*)PyArray_SimpleNew(ndim, dims, (int)type);
-        owner = true;
+//        std::cout << "PyObject Refcount new - " << Py_REFCNT((PyObject*)numpy_array) << "/" << PyArray_REFCOUNT(numpy_array) << std::endl;
     }
 
     NpyArray(NpyType type, int ndim, uint32_t dim0, ...) : NpyArray()
@@ -137,16 +150,28 @@ public:
 
         va_end(args);
 
-        numpy_array = (PyArrayObject*)PyArray_SimpleNew(ndim, np_dims, (int)type);
-        owner = true;
+        new_array(type, ndim, np_dims);
+    }
+
+    NpyArray(NpyType type, int ndim, npy_intp* dims, void* data=0) : NpyArray()
+    {
+        new_array(type, ndim, dims, data);
+    }
+
+    NpyArray(NpyType type, int ndim, uint32_t* dims, void* data=0) : NpyArray()
+    {
+        npy_intp np_dims[NPY_MAXDIMS];
+        for (uint8_t i = 0; i < ndim; i++)
+            np_dims[i] = (npy_intp)dims[i];
+
+        new_array(type, ndim, np_dims, data);
     }
 
     ~NpyArray()
     {
-        if (owner)
-            PyArray_XDECREF(numpy_array);
-        numpy_array = 0;
-        owner = false;
+//        std::cout << "~NpyArray Refcount old - " << this->refcount() << std::endl;
+        this->decref();
+//        std::cout << "~NpyArray Refcount new - " << this->refcount() << std::endl;
     }
 
     static NpyArray empty_like(NpyArray& other)
@@ -156,9 +181,11 @@ public:
 
     inline PyObject* py_return()
     {
-        if (owner)
-            Py_XINCREF((PyObject*)numpy_array);
-        return (PyObject*)numpy_array;
+//        std::cout << "py_return Refcount - " << this->refcount() << std::endl;
+        PyObject* result = (PyObject*)numpy_array;
+        if (PyArray_CHKFLAGS(numpy_array, NPY_ARRAY_OWNDATA))
+            this->numpy_array = 0;
+        return result;
     }
 
     inline NpyType type()
@@ -224,12 +251,51 @@ public:
 
     int refcount()
     {
+//        if (PyArray_REFCOUNT(numpy_array) != Py_REFCNT(numpy_array))
+//            std::cout << "WARNING: Reference counts do not match." << std::endl;
         return numpy_array ? (int)PyArray_REFCOUNT(numpy_array) : 0;
     }
 
 private:
+    void incref()
+    {
+        if (this->numpy_array)
+        {
+//            std::cout << "incref old - " << Py_REFCNT((PyObject*)numpy_array) << "/" << PyArray_REFCOUNT(numpy_array) << "\n";
+            Py_INCREF(this->numpy_array);
+//            std::cout << "incref new - " << Py_REFCNT((PyObject*)numpy_array) << "/" << PyArray_REFCOUNT(numpy_array) << "\n";
+        }
+    }
+
+    void decref()
+    {
+        if (this->numpy_array)
+        {
+//            std::cout << "decref old - " << Py_REFCNT((PyObject*)numpy_array) << "/" << PyArray_REFCOUNT(numpy_array) << "\n";
+            bool del = PyArray_REFCOUNT(this->numpy_array) == 1;
+            Py_DECREF((PyObject*)this->numpy_array);
+//            std::cout << "decref new - " << Py_REFCNT((PyObject*)numpy_array) << "/" << PyArray_REFCOUNT(numpy_array) << "\n";
+            if (del)
+                this->numpy_array = 0;
+        }
+    }
+
+    void new_array(NpyType type, int ndim, npy_intp* dims, void* data=0)
+    {
+        if (data != 0)
+        {
+            this->numpy_array = (PyArrayObject*)PyArray_SimpleNewFromData(ndim, dims, (int)type, data);
+            PyArray_ENABLEFLAGS(numpy_array, NPY_ARRAY_OWNDATA);
+        }
+        else
+        {
+            this->numpy_array = (PyArrayObject*)PyArray_SimpleNew(ndim, dims, (int)type);
+        }
+//        std::cout << "new_array Refcount - " << this->refcount() << "\n";
+    }
+
+private:
     PyArrayObject* numpy_array;
-    bool owner;
 };
 
 

@@ -96,4 +96,5 @@ class CTypeConverter(object):
 
     def __call__(self, *args):
         args = args + self._arg_default[len(args):]
-        return self._function(*args)
+        result = self._function(*args)
+        return result
