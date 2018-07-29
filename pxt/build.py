@@ -21,15 +21,18 @@ _pxt_includes = [os.path.abspath(os.path.join(os.path.dirname(__file__), '..')),
                  np.get_include()]
 
 
-def everything(root_dir: str=''):
+def everything(root_dir: str='', recursive: bool=True):
     """
-    Build everything
+    Build everything within the specified root directory.
 
     Parameters
     ----------
     root_dir : str
-        The root directory in which to search for pxt code to compile (default
-        is the current working directory).
+        The root directory in which to search for pxt code to
+        compile (default is the current working directory).
+    recursive : bool
+        Build everything within the sub-directories as well
+        (default `True`).
     """
     import glob
 
@@ -38,7 +41,7 @@ def everything(root_dir: str=''):
 
     # find all python files
     expression = os.path.join(root_dir, '**/*.py')
-    module_names = set([f for f in glob.glob(expression, recursive=True)])
+    module_names = set([f for f in glob.glob(expression, recursive=recursive)])
 
     # prevent recursive imports (do not import the package that tries to
     # build everything, because it would result in a loop)

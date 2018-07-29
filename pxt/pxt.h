@@ -246,7 +246,7 @@ public:
     template<typename T>
     inline T* cast()
     {
-        return (T*)PyArray_DATA(numpy_array);
+        return (T*)data();
     }
 
     int refcount()

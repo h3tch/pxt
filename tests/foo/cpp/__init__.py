@@ -2,8 +2,7 @@ from typing import Tuple
 
 import numpy as np
 
-import pxt.build
-import pxt.link
+import pxt
 
 
 test_cpp = pxt.imp(pxt.build.cpp('test_cpp.cpp'), 'test_cpp.test_cpp')

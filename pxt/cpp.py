@@ -1,5 +1,6 @@
 import ctypes
 import typing
+from typing import Callable, Iterable, Type
 
 import numpy as np
 
@@ -58,24 +59,25 @@ dtypeid_dtype = {
 class CTypeConverter(object):
     """
     A helper class to automatically convert function arguments from
-    python types to C types and the result C type back into a python type.
+    python types to C types and the resulting C type back into a python type.
+
+    Parameters
+    ----------
+    function_pointer : Callable
+        A function pointer to an extension function.
+    arg_types : Iterable
+        The argument types of the respective decorated python function.
+    arg_default : Iterable
+        The default values of the respective arguments.
+    result_type
+        The result type of the respective decorated python function.
     """
 
-    def __init__(self, function_pointer, arg_types, arg_default, result_type):
-        """
-        Constructor.
-
-        Parameters
-        ----------
-        function_pointer
-            A function pointer to an extension function.
-        arg_types
-            The argument types of the respective decorated python function.
-        arg_default
-            The default values of the respective arguments.
-        result_type
-            The result type of the respective decorated python function.
-        """
+    def __init__(self,
+                 function_pointer: Callable,
+                 arg_types: Iterable,
+                 arg_default: Iterable,
+                 result_type):
         # Set the input argument and result types of the function based on
         # `arg_types` and `result_type`. This way the ctypes API takes care
         # of converting basic types between C and Python and we only need
@@ -95,6 +97,22 @@ class CTypeConverter(object):
             self._function.restype = result_type
 
     def __call__(self, *args):
+        """
+        Call the wrapped function using the arguments specified in ``args``
+        and use the default values specified on CTypeConverter initialization
+        :func:`pxt.cpp.CTypeConverter.__init__`.
+
+        Parameters
+        ----------
+        args
+            The input argument of the function. If the functions has more
+            than the provided arguments, the remaining arguments will be filled
+            with the default values specified on CTypeConverter initialization
+            :func:`pxt.cpp.CTypeConverter.__init__` or with `None` otherwise.
+
+        Returns
+        -------
+        Returns the value of the wrapped function.
+        """
         args = args + self._arg_default[len(args):]
-        result = self._function(*args)
-        return result
+        return self._function(*args)

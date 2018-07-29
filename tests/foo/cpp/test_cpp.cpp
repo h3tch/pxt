@@ -14,6 +14,7 @@ void add(T* a, T* b, T* c, int n)
 
 EXPORT PyObject* np_add(PyObject* a_, PyObject* b_)
 {
+    PyGIL lock();
     NpyArray a(a_);
     NpyArray b(b_);
 
@@ -79,6 +80,7 @@ EXPORT PyObject* np_add(PyObject* a_, PyObject* b_)
 
 EXPORT PyObject* return_tuple(PyObject* a, PyObject* b)
 {
+    PyGIL lock();
     return PyResult(1, 2, 3, a, b);
 }
 

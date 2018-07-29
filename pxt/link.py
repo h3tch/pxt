@@ -20,8 +20,8 @@ def mod(module, **kwargs) -> Callable:
     library function. When the decorated function is called, the external
     function will be used instead. If no suitable library function could
     be found, the decorated function itself will be used. In case the
-    ``raise_exception`` argument is set to ``True`` a ```` will be
-    raised if no library function could be found.
+    ``raise_exception`` argument is set to ``True`` a ``ValueError`` will
+    be raised if no library function could be found.
 
     Parameters
     ----------
@@ -54,14 +54,14 @@ def lib(library: str, **kwargs) -> Callable:
     library function. When the decorated function is called, the external
     function will be used instead. If no suitable library function could
     be found, the decorated function itself will be used. In case the
-    ``raise_exception`` argument is set to ``True`` a ```` will be
-    raised if no library function could be found.
+    ``raise_exception`` argument is set to ``True`` a ``ValueError`` will
+    be raised if no library function could be found.
 
     Parameters
     ----------
     library : str
-        The relative or absolute path to the dynamic link library (Windows *.dll)
-        or shared object (Linux *.so). Wildcards are supported. In case multiple
+        The relative or absolute path to the dynamic link library (Windows \*.dll)
+        or shared object (Linux \*.so). Wildcards are supported. In case multiple
         libraries fulfill the search condition, the decorator will search for a
         linkable function in all of them in no specific order. The first function
         that fits to the name of the decorated function (or the name specified via
@@ -158,6 +158,27 @@ def lib(library: str, **kwargs) -> Callable:
 
 
 def cuda(binary_file: str, **kwargs) -> Callable:
+    """
+    This function decorator links the decorated function to a CUDA
+    function. When the decorated function is called, the CUDA function
+    will be used instead. If no suitable CUDA function could be
+    found, the decorated function itself will be used.
+
+    Parameters
+    ----------
+    binary_file
+        The relative or absolute path to the CUDA binary code (\*.cubin).
+    kwargs
+        function_name : str, optional
+            Provide the name of the function within the specified library.
+            If not specified, the name of the decorated function will be used.
+
+    Returns
+    -------
+    wrapper : Callable
+        The function wrapper return by the decorator function. See python decorator
+        function specification for detailed information how decorators work.
+    """
     def wrapper(func):
         # make sure pycuda is installed
         if importlib.util.find_spec('pycuda') is None:
@@ -169,7 +190,8 @@ def cuda(binary_file: str, **kwargs) -> Callable:
         if func is None:
             parent = parent.f_back
         package_folder = os.path.dirname(parent.f_locals['__file__'])
-        file_path = binary_file if os.path.isabs(binary_file) else os.path.abspath(os.path.join(package_folder, binary_file))
+        file_path = binary_file if os.path.isabs(binary_file) else os.path.abspath(
+            os.path.join(package_folder, binary_file))
 
         # make sure the cuda source file exists
         if not os.path.exists(file_path):

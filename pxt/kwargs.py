@@ -4,20 +4,17 @@ from typing import Iterable, Union
 class KwArgs(dict):
     """
     Keyword argument helper class.
+
+    Parameters
+    ----------
+    kwargs : dict
+        Keyword arguments of a function or method.
     """
 
     def __init__(self, kwargs: dict):
-        """
-        Constructor.
-
-        Parameters
-        ----------
-        kwargs
-            Keyword arguments of a function or method.
-        """
         super().__init__(kwargs)
 
-    def try_get(self, key: Union[Iterable, object], default=None):
+    def try_get(self, key, default=None):
         """
         Try to get the value to the specified key, but do not throw an
         exception if is does not exist. Instead return a default value
@@ -26,9 +23,9 @@ class KwArgs(dict):
         Parameters
         ----------
         key : object, Iterable[object]
-            A list of keys indicating the value to search for. All keys are aliases
-            for the same value, hence, the first value of the first key found will be
-            returned.
+            A key or list of keys indicating the value to search for. All
+            keys are aliases for the same value, hence, the first value
+            of the first key found will be returned.
         default : object
             The default value to return in case the key is not in the dictionary.
 
@@ -48,7 +45,7 @@ class KwArgs(dict):
 
         Parameters
         ----------
-        keys : str
+        keys : object, Iterable[object]
             One or more string keys that should be removed from the
             keyword arguments `kwargs` and returned by the function.
 
@@ -75,10 +72,16 @@ class KwArgs(dict):
         """
         Add or append the specified key-value pair.
 
+        Parameters
+        ----------
+        key : object
+            A key that should be appended with the specified value.
+        value : object
+            The value to append to the specified key.
+
         Returns
         -------
-        new_value
-            Returns the updated value.
+        Returns the updated key value.
         """
         # if the key already exists, we need to make sure
         # that the current value is appended correctly
