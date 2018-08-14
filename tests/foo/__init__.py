@@ -4,12 +4,6 @@ from typing import Tuple
 import numpy as np
 import pxt.link
 
-try:
-    from pxt.cuda import In, Out
-    CUDA = True
-except ImportError:
-    CUDA = None
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -36,11 +30,20 @@ def cpp_no_func(a: int, b: int) -> int:
     return a + b
 
 
-if CUDA:
-    @pxt.link.cuda('cu/multiply.cubin')
+try:
+    from pxt.cuda import In, Out
+
+    # 2) link the cuda kernel 'multiply' to the 'cu_multiply' function
+    #    set a default value for the grid size
+    #    pre-allocate a result object that will be returned by the function
+    @pxt.link.cuda('cu/multiply.cubin', function='multiply', grid=(1, 1),
+                   result_arg=0, result_object=np.empty((512,), dtype=np.float32))
+    # 1) build multiply.cu -> cu/multiply.cubin
     @pxt.build.cuda('cu/multiply.cu')
-    def multiply(out: Out, a: In, b: In, **kwargs):
-        pass
+    def cu_multiply(a: In, b: In, **kwargs) -> np.ndarray:
+        raise NotImplementedError
+except ImportError:
+    pass
 
 
 rs_lib = pxt.build.rust('rs/Cargo.toml')

@@ -169,25 +169,57 @@ def cuda(binary_file: str, **kwargs) -> Callable:
         if func is None:
             parent = parent.f_back
         package_folder = os.path.dirname(parent.f_locals['__file__'])
-        file_path = binary_file if os.path.isabs(binary_file) else os.path.abspath(os.path.join(package_folder, binary_file))
 
-        # make sure the cuda source file exists
-        if not os.path.exists(file_path):
-            raise FileNotFoundError('The file "{}" does not exist.'.format(file_path))
+        import pxt
 
-        import pxt.cuda
-        pxt.cuda.initialize()
+        with pxt.helpers.chdir(package_folder):
 
-        with open(file_path, 'rb') as fp:
-            binary_code = fp.read()
+            kw_args = pxt.kwargs.KwArgs(kwargs)
 
-        func_name = pxt.kwargs.KwArgs(kwargs).try_get(['function', 'function_name'], func.__name__)
-        mod = pxt.cuda.BinModule(binary_code)
-        fn = mod.get_function(func_name)
+            # get the context to which the kernel should be linked
+            # and make sure the context is active
+            context = kw_args.try_get(['ctx', 'context'], None)
+            if context is None:
+                # get the device to which the kernel should be linked
+                device = kw_args.try_get(['dev', 'device'], None)
+                if device is None:
+                    import pxt.cuda
+                    import pycuda.driver
+                    pxt.cuda.initialize()
+                    device = pycuda.driver.Device(0)
+                flags = kw_args.try_get('flags', 0)
+                context = device.make_context(flags)
+            else:
+                context.push()
 
-        sig = inspect.signature(func)
-        arg_types = [sig.parameters[name].annotation for name in sig.parameters]
+            # get the binary code of the module
+            binary_code = kw_args.try_get('binary', None)
+            if binary_code is None:
+                # make sure the cuda source file exists
+                if not os.path.exists(binary_file):
+                    raise FileNotFoundError('The file "{}" does not exist.'.format(binary_file))
+                with open(binary_file, 'rb') as fp:
+                    binary_code = fp.read()
 
-        return pxt.cuda.CudaFunction(mod, fn, arg_types)
+            # get the function name of the module
+            func_name = pxt.kwargs.KwArgs(kwargs).try_get(['func', 'function', 'function_name'], func.__name__)
+
+            import pxt.cuda
+            mod = pxt.cuda.BinModule(binary_code)
+            fn = mod.get_function(func_name)
+
+            # the context is no longer needed so we
+            # restore the original state
+            context.pop()
+
+            sig = inspect.signature(func)
+            arg_types = [sig.parameters[name].annotation for name in sig.parameters]
+
+            block = kw_args.try_get('block', None)
+            grid = kw_args.try_get('grid', None)
+            result_object = kw_args.try_get(['result_object', 'return_memory'], None)
+            result_arg = kw_args.try_get('result_arg', 0)
+
+            return pxt.cuda.CudaFunction(context, mod, fn, block, grid, arg_types, result_object, result_arg)
 
     return wrapper

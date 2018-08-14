@@ -5,6 +5,7 @@ import os
 import platform
 import re
 import shutil
+import sys
 import tempfile
 import types
 from typing import Callable, List, Optional, Tuple, Union
@@ -15,6 +16,7 @@ import setuptools
 import pxt.helpers
 import pxt.kwargs
 
+_kw_source = 'source'
 _kw_include_dirs = 'include_dirs'
 _cpp_include_pattern = re.compile(r'^\s*#include\s+"[^"]*"', re.MULTILINE)
 _pxt_includes = [os.path.abspath(os.path.join(os.path.dirname(__file__), '..')),
@@ -233,6 +235,8 @@ def cpp(file: str, force: bool=False, **kwargs) -> Union[Callable, str]:
                 extension = distutils.core.Extension(namespace, sources=[file], **kw_args)
 
                 # compile the extension
+                if not hasattr(sys, 'argv'):
+                    setattr(sys, 'argv', [os.path.basename(file)])
                 distutils.core.setup(script_args=['build', '--build-base={}'.format(tmp_folder), '--force'],
                                      ext_modules=[extension], zip_safe=False)
 
@@ -268,6 +272,19 @@ def cuda(file: str, force: bool=False, **kwargs) -> Optional[Callable]:
     kwargs
         Additional arguments for the Extension class.
 
+        source : str
+            Provide the source code as a python string.
+        include_dirs : list
+            Additional include directories for the CUDA compiler.
+        options : list
+            Additional nvcc compiler options.
+        no_extern_c : bool
+            Do not sourround the CUDA code with 'extern "C"' (default `False`).
+        arch : str
+            Compile for a specific architecture.
+        cache_dir : str
+            Specify where to cache files of the nvcc compiler.
+
     Returns
     -------
     wrapper : Callable, None
@@ -276,15 +293,15 @@ def cuda(file: str, force: bool=False, **kwargs) -> Optional[Callable]:
     """
 
     def wrapper(func):
-        global _kw_include_dirs, _pxt_includes
+        global _kw_include_dirs, _kw_source, _pxt_includes
 
         # make sure pycuda is installed
         if importlib.util.find_spec('pycuda') is None:
             raise RuntimeError('"pycuda" module could not be found. Please '
                                'make sure you have PyCuda installed.')
 
-        file_path = file if os.path.isabs(file) else file
-        binary_file = os.path.splitext(file_path)[0] + '.cubin'
+        file_name, file_ext = os.path.splitext(file)
+        binary_file = file if file_ext == '.cubin' else file_name + '.cubin'
 
         # get the package name and folder of the decorated function
         parent = inspect.currentframe().f_back
@@ -292,18 +309,18 @@ def cuda(file: str, force: bool=False, **kwargs) -> Optional[Callable]:
             parent = parent.f_back
         package_folder = os.path.dirname(parent.f_locals['__file__'])
 
+        import pxt
+
         with pxt.helpers.chdir(package_folder):
-            # make sure the cuda source file exists
-            if not os.path.exists(file_path):
-                raise FileNotFoundError('The file "{}" does not exist.'.format(file_path))
+            kw_args = pxt.kwargs.KwArgs(kwargs)
 
             # only check for changes if compilation should not be forced
-            if not force:
+            if not force and os.path.exists(file):
                 # get the source file list
-                include_dirs = pxt.kwargs.KwArgs(kwargs).append(_kw_include_dirs, _pxt_includes)
-                include_dirs = [_module_dir(d) if isinstance(d, types.ModuleType) else d
-                                for d in include_dirs]
-                source_files = pxt.helpers.get_source_list(file_path, include_dirs, _find_c_include_files)
+                inc_dirs = kw_args.append(_kw_include_dirs, _pxt_includes)
+                inc_dirs = [_module_dir(d) if isinstance(d, types.ModuleType) else d for d in inc_dirs]
+                kw_args[_kw_include_dirs] = inc_dirs
+                source_files = pxt.helpers.get_source_list(file, inc_dirs, _find_c_include_files)
 
                 # get target and source file timestamps
                 binary_timestamp = os.path.getmtime(binary_file) if os.path.exists(binary_file) else 0
@@ -314,15 +331,34 @@ def cuda(file: str, force: bool=False, **kwargs) -> Optional[Callable]:
                 if binary_timestamp > max(source_timestamp):
                     return func
 
-            # initialize cuda
-            import pxt.cuda as pxt_cuda
-            import pycuda.compiler
-            pxt_cuda.initialize()
+            # get the source code
+            if 'source' in kw_args:
+                # from argument
+                source = kw_args['source']
+            elif os.path.exists(file):
+                # from file
+                with open(file, 'r') as fp:
+                    source = fp.read()
+            else:
+                raise FileNotFoundError(file)
 
-            # compile the source file
-            with open(file_path, 'r') as fp:
-                source = fp.read()
-            binary = pycuda.compiler.compile(source)
+            # get compute capability of the architecture
+            if 'arch' in kw_args:
+                # from argument
+                arch = kw_args['arch']
+            else:
+                # get the compute capabilities of the device
+                import pxt.cuda
+                device = kw_args.try_get(['device', 'device_id'], None)
+                arch = pxt.cuda.architecture(device)
+
+            # compile the source code
+            import pycuda.compiler
+            binary = pycuda.compiler.compile(source, arch=arch,
+                                             no_extern_c=kw_args.try_get('no_extern_c', False),
+                                             options=kw_args.try_get('options', None),
+                                             cache_dir=kw_args.try_get('cache_dir', None),
+                                             include_dirs=kw_args.try_get('include_dirs', []))
 
             # save the binary
             with open(binary_file, 'wb') as fp:
