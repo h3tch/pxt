@@ -12,10 +12,12 @@ import pycuda.tools
 _initialized = False
 _architecture = {}
 
+
 # Python function types for cuda.
 In = typing.Union[pycuda.driver.In, np.ndarray]
 Out = typing.Union[pycuda.driver.Out, np.ndarray]
 InOut = typing.Union[pycuda.driver.InOut, np.ndarray]
+
 
 # Map python types to pycuda.
 py2cu = {
@@ -138,7 +140,7 @@ class CudaFunction(object):
     A helper class to automatically convert function arguments from
     python types to pycuda compatible objects.
     """
-    def __init__(self, context, module, func, block, grid, arg_types, result_memory=None, result_arg=0):
+    def __init__(self, context, module, func, block, grid, arg_types, returns):
         # Check whether any input type needs to be converted before being passed to the
         # external library function and get the respective converter function object.
         self._arg2cu = [py2cu[py_type] if py_type in py2cu else None for py_type in arg_types]
@@ -150,22 +152,27 @@ class CudaFunction(object):
         self._block = block
         self._grid = grid
 
-        self._result_arg = result_arg
-        self._result_memory = result_memory
-        self._gpu_result_memory = None if result_memory is None else pycuda.driver.Out(result_memory)
+        self._return_idx = []
+        self._return_mem = []
+        self._return_order = []
+        if returns is not None:
+            if not isinstance(returns, list):
+                returns = [returns]
+            self._return_idx = [a[0] for a in returns]
+            self._return_mem = [pycuda.driver.Out(a[1]) for a in returns]
+            sort_index = np.argsort(self._return_idx)
+            self._return_idx = [self._return_idx[i] for i in sort_index]
+            self._return_mem = [self._return_mem[i] for i in sort_index]
+            self._return_order = [0] * len(self._return_idx)
+            for j, i in enumerate(sort_index):
+                self._return_order[i] = j
 
     def __call__(self, *args, **kwargs):
-        # if the creation context is not current make it
-        # current so we can call the kernel function
-        is_current = self._context.get_current() == self._context
-        if not is_current:
-            self._context.push()
-
         # convert input arguments to c compatible types
-        cu_args = [arg if arg2cu is None else arg2cu(arg) for arg2cu, arg in zip(self._arg2cu, args)]
-
-        if self._gpu_result_memory is not None:
-            cu_args.insert(self._result_arg, self._gpu_result_memory)
+        cu_args = [arg if isinstance(arg, pycuda.driver.ArgumentHandler) else arg2cu(arg)
+                   for arg2cu, arg in zip(self._arg2cu, args)]
+        for i, m in zip(self._return_idx, self._return_mem):
+            cu_args.insert(i, m)
 
         # set default values for block and grid size if not provided by the user
         if self._block is not None and 'block' not in kwargs:
@@ -173,15 +180,13 @@ class CudaFunction(object):
         if self._grid is not None and 'grid' not in kwargs:
             kwargs['grid'] = self._grid
 
-        # call the cuda function
-        result = self._function(*cu_args, **kwargs)
-
-        # if we changed the context we need to undo our changes
-        if not is_current:
-            self._context.pop()
+        # if the creation context is not current make it
+        # current so we can call the kernel function
+        with activate(self._context):
+            # call the cuda function
+            self._function(*cu_args, **kwargs)
 
         # return the result object if used
-        if self._result_memory is not None:
-            return self._result_memory
-
-        return result
+        if len(self._return_mem) > 0:
+            result = tuple(self._return_mem[i].array for i in self._return_order)
+            return result[0] if len(result) == 1 else result

@@ -4,6 +4,7 @@ import glob
 import inspect
 import itertools
 import os
+import warnings
 from typing import Callable, List, Union
 
 
@@ -274,3 +275,34 @@ def temporary_environ(**kwargs):
                 del os.environ[name]
             else:
                 os.environ[name] = old_value
+
+
+def function_frame(back=0):
+    frame = inspect.currentframe().f_back
+    parent = frame.f_back
+    while back < 0:
+        frame = parent
+        parent = parent.f_back
+        back += 1
+    return frame, parent
+
+
+def environ(*args):
+    for arg in args[:-1]:
+        if isinstance(arg, str) and arg in os.environ:
+            return os.environ[arg]
+    return args[-1]
+
+
+def env_default(frame, variable_name, default):
+    package = frame.f_globals['__name__'].replace('.', '_').upper()
+    fn = '{}_{}'.format(package, frame.f_code.co_name.upper())
+    env = ['{}_{}'.format(package, variable_name), '{}_{}'.format(fn, variable_name)]
+    return environ(*env, default)
+
+
+def fallback(ex, fallback_function, fallback_enabled):
+    if fallback_enabled:
+        warnings.warn(str(ex))
+        return fallback_function
+    raise ex

@@ -58,7 +58,11 @@ def everything(root_dir: str=''):
     _ = [importlib.import_module(m) for m in modules]
 
 
-def rust(cargo_file: str, name: str=None, force: bool=False, **kwargs) -> Union[Callable, str]:
+def rust(cargo_file: str,
+         name: Optional[str]=None,
+         force: bool=False,
+         enable_fallback: bool=False,
+         **kwargs) -> Union[Callable, str]:
     """
     Compile and build a RUST source code file into a dynamic library.
 
@@ -66,12 +70,14 @@ def rust(cargo_file: str, name: str=None, force: bool=False, **kwargs) -> Union[
     ----------
     cargo_file : str
         The RUST source file to be compiled as a dynamic library.
-    name : str
+    name : Optional[str]
         The module name. If `None` (default) the name of specified in
         `Cargo.toml` will be used. If no name is specified in `Cargo.toml`,
-    force : bool
+    force : Optional[bool]
         Fore the file to be compiled if `True`. Otherwise only compile
         if there are any changes (default `False`).
+    enable_fallback : Optional[bool]
+        Enable python function fallback in case of an error (default `False`).
     kwargs
         Additional arguments for the RustExtension class.
 
@@ -81,6 +87,9 @@ def rust(cargo_file: str, name: str=None, force: bool=False, **kwargs) -> Union[
         If called as a decorator, a wrapper function will be returned.
         Otherwise the path to the binary file will be returned.
     """
+
+    frame, _ = pxt.helpers.function_frame()
+
     def wrapper(func):
         def object2binding(obj):
             # use pxt default binding
@@ -104,21 +113,15 @@ def rust(cargo_file: str, name: str=None, force: bool=False, **kwargs) -> Union[
             raise ValueError('The specified python-rust binding "{}" '
                              'is not supported.'.format(obj))
 
-        # make sure setuptools_rust is installed
-        if importlib.util.find_spec('setuptools_rust') is None:
-            raise RuntimeError('"setuptools_rust" module could not be found. Please '
-                               'make sure you have "setuptools-rust" installed.')
-
-        # import setuptools
-        import setuptools_rust.utils
-
         # get the package name and folder of the decorated function
-        parent_frame = inspect.currentframe().f_back
-        if func is None:
-            parent_frame = parent_frame.f_back
+        _, parent = pxt.helpers.function_frame(0 if func is not None else -1)
+
+        # get environment settings (they override function arguments)
+        force_enabled = pxt.helpers.env_default(frame, 'FORCE', force)
+        fallback_enabled = pxt.helpers.env_default(frame, 'ENABLE_FALLBACK', enable_fallback)
 
         # gather relevant compile path information
-        _, package_folder, tmp_path = _get_build_infos(parent_frame, cargo_file)
+        _, package_folder, tmp_path = _get_build_info(parent, cargo_file)
 
         # Change the current working directory to the package folder.
         # This way, the build function can be used the same way by
@@ -139,9 +142,10 @@ def rust(cargo_file: str, name: str=None, force: bool=False, **kwargs) -> Union[
 
             # get binary file path
             binary_file = pxt.helpers.get_binary_name(os.path.join(package_folder, namespace))
+            result = func if func is not None else binary_file
 
             # only check for changes if compilation should not be forced
-            if not force:
+            if not force_enabled:
                 # get source file path
                 binary_file = pxt.helpers.get_binary_name(os.path.join(package_folder, namespace))
                 source_files = pxt.helpers.recursive_file_search(ext=['rs', 'toml'])
@@ -153,24 +157,34 @@ def rust(cargo_file: str, name: str=None, force: bool=False, **kwargs) -> Union[
                 # if all binary files are newer than all source files
                 # there are no changes that make compilation necessary
                 if binary_timestamp > max(source_timestamp):
-                    return func if func is not None else binary_file
+                    return result
 
             # evaluate the binding keyword argument for the rust-python binding to be used
             kwargs['binding'] = object2binding(kwargs['binding'] if 'binding' in kwargs else None)
 
+            # make sure setuptools_rust is installed
+            if importlib.util.find_spec('setuptools_rust') is None:
+                return pxt.helpers.fallback(RuntimeError('"setuptools_rust" module could not be found. Please '
+                                            'make sure you have "setuptools-rust" installed.'),
+                                            result, fallback_enabled)
+
             # build the rust extension
+            import setuptools_rust
             extension = setuptools_rust.RustExtension(namespace, cargo_file, **kwargs)
             setuptools.setup(script_args=['build_ext', '--build-temp={}'.format(tmp_path),
                                           '--force', '--inplace'],
                              rust_extensions=[extension], zip_safe=False)
 
-            return func if func is not None else binary_file
+            return result
 
     # ether use this function as a decorator or a normal function
     return wrapper if pxt.helpers.is_called_as_decorator() else wrapper(None)
 
 
-def cpp(file: str, force: bool=False, **kwargs) -> Union[Callable, str]:
+def cpp(file: str,
+        force: bool=False,
+        enable_fallback: bool=False,
+        **kwargs) -> Union[Callable, str]:
     """
     Compile and build a C++ source code file into a dynamic library.
 
@@ -181,6 +195,8 @@ def cpp(file: str, force: bool=False, **kwargs) -> Union[Callable, str]:
     force : bool
         Fore the file to be compiled if `True`. Otherwise only compile
         if there are any changes.
+    enable_fallback : Optional[bool]
+        Enable python function fallback in case of an error (default `False`).
     kwargs
         Additional arguments for the Extension class.
 
@@ -191,29 +207,35 @@ def cpp(file: str, force: bool=False, **kwargs) -> Union[Callable, str]:
         Otherwise the path to the binary file will be returned.
     """
 
+    frame, _ = pxt.helpers.function_frame()
+
     # the function wrapper to be returned in case the `cpp` function is used as a decorator
     def wrapper(func):
         global _kw_include_dirs, _pxt_includes
 
         # get the package name and folder of the decorated function
-        parent = inspect.currentframe().f_back
-        if func is None:
-            parent = parent.f_back
+        _, parent = pxt.helpers.function_frame(0 if func is not None else -1)
+
+        # get environment settings (they override function arguments)
+        force_enabled = pxt.helpers.env_default(frame, 'FORCE', force)
+        fallback_enabled = pxt.helpers.env_default(frame, 'ENABLE_FALLBACK', enable_fallback)
 
         # gather relevant compile path information
-        namespace, package_folder, tmp_folder = _get_build_infos(parent, file)
+        namespace, package_folder, tmp_folder = _get_build_info(parent, file)
+
+        binary_file = pxt.helpers.get_binary_name(file)
+        binary_name = os.path.split(binary_file)[1]
+        dst_path = os.path.join(package_folder, binary_name)
+        result = func if func is not None else dst_path
 
         with pxt.helpers.chdir(package_folder):
             # use keyword argument helper class
             kw_args = pxt.kwargs.KwArgs(kwargs)
 
             with pxt.helpers.temporary_environ(**kw_args.extract('CC', 'CXX')):
-                binary_file = pxt.helpers.get_binary_name(file)
-                binary_name = os.path.split(binary_file)[1]
-                dst_path = os.path.join(package_folder, binary_name)
 
                 # only check for changes if compilation should not be forced
-                if not force:
+                if not force_enabled:
                     # get target and source file paths
                     source_files = pxt.helpers.recursive_file_search(ext=['cpp', 'cxx'])
 
@@ -224,7 +246,7 @@ def cpp(file: str, force: bool=False, **kwargs) -> Union[Callable, str]:
                     # if all binary files are newer than all source files
                     # there are no changes that make compilation necessary
                     if binary_timestamp > max(source_timestamp):
-                        return func if func is not None else dst_path
+                        return result
 
                 # add pxt include directories
                 include_dirs = kw_args.append(_kw_include_dirs, _pxt_includes)
@@ -244,33 +266,54 @@ def cpp(file: str, force: bool=False, **kwargs) -> Union[Callable, str]:
                 # directory to their destination folder
                 tmp_path = pxt.helpers.recursive_file_search(tmp_folder, binary_name)
                 if len(tmp_path) == 0:
-                    raise FileNotFoundError('Could not find "{}" in the output folder "{}". '
-                                            'Compilation might have failed'.format(binary_name, tmp_folder))
+                    return pxt.helpers.fallback(FileNotFoundError('Could not find "{}" in the output folder "{}". '
+                                                'Compilation might have failed'.format(binary_name, tmp_folder)),
+                                                result, fallback_enabled)
                 shutil.copyfile(tmp_path[0], dst_path)
 
                 # A new module has been created and should be immediately importable
                 # by other modules. Hence, the import caches need to be invalidated.
                 importlib.invalidate_caches()
 
-                return func if func is not None else dst_path
+                return result
 
     # ether use this function as a decorator or a normal function
     return wrapper if pxt.helpers.is_called_as_decorator() else wrapper(None)
 
 
-def cuda(file: str, force: bool=False, **kwargs) -> Optional[Callable]:
+def cuda(file: str,
+         force: bool=False,
+         enable_fallback: bool=False,
+         **kwargs) -> Optional[Callable]:
     """
     Compile a CUDA source code file into binary CUDA code.
+
+    Examples
+    --------
+    Compile a file and return the file name of the binary file::py
+    >>>binary_file = pxt.build.cuda('multiply.cu')
+
+    Compile the code in 'multiply.cu' to binary code using `@pxt.build.cuda`
+    and link the `multiply(a, b)` Python function to the `multiply(out, a, b)`
+    CUDA kernel of the binary file 'multiply.cubin'::py
+    >>>@pxt.link.cuda('multiply.cubin')
+    >>>@pxt.build.cuda('multiply.cu')
+    >>>def multiply(result: Out, a: In, b: In, **kwargs):
+    >>>    raise NotImplementedError
 
     Parameters
     ----------
     file : str
         The CUDA source file to be compiled into binary CUDA code.
+        Or the CUDA binary output file (`*.cubin`) in which the binary
+        code should be stored.
     force : bool
         Fore the file to be compiled if `True`. Otherwise only compile
         if there are any changes.
+    enable_fallback : Optional[bool]
+        Enable python function fallback in case of an error (default `False`).
     kwargs
-        Additional arguments for the Extension class.
+        Additional arguments for PyCuda compile method.
 
         source : str
             Provide the source code as a python string.
@@ -292,30 +335,38 @@ def cuda(file: str, force: bool=False, **kwargs) -> Optional[Callable]:
         Otherwise the path to the binary file will be returned.
     """
 
+    frame, _ = pxt.helpers.function_frame()
+
     def wrapper(func):
         global _kw_include_dirs, _kw_source, _pxt_includes
 
-        # make sure pycuda is installed
-        if importlib.util.find_spec('pycuda') is None:
-            raise RuntimeError('"pycuda" module could not be found. Please '
-                               'make sure you have PyCuda installed.')
+        import pxt
 
+        # get name of the binary file
         file_name, file_ext = os.path.splitext(file)
         binary_file = file if file_ext == '.cubin' else file_name + '.cubin'
 
+        result = func if func is not None else binary_file
+
         # get the package name and folder of the decorated function
-        parent = inspect.currentframe().f_back
-        if func is None:
-            parent = parent.f_back
+        _, parent = pxt.helpers.function_frame(0 if func is not None else -1)
         package_folder = os.path.dirname(parent.f_locals['__file__'])
 
-        import pxt
+        # get environment settings (they override function arguments)
+        force_enabled = pxt.helpers.env_default(frame, 'FORCE', force)
+        fallback_enabled = pxt.helpers.env_default(frame, 'ENABLE_FALLBACK', enable_fallback)
+
+        # make sure pycuda is installed
+        if importlib.util.find_spec('pycuda') is None:
+            return pxt.helpers.fallback(RuntimeError('"pycuda" module could not be found. Please '
+                                                     'make sure you have PyCuda installed.'),
+                                        result, fallback_enabled)
 
         with pxt.helpers.chdir(package_folder):
             kw_args = pxt.kwargs.KwArgs(kwargs)
 
             # only check for changes if compilation should not be forced
-            if not force and os.path.exists(file):
+            if not force_enabled and os.path.exists(file):
                 # get the source file list
                 inc_dirs = kw_args.append(_kw_include_dirs, _pxt_includes)
                 inc_dirs = [_module_dir(d) if isinstance(d, types.ModuleType) else d for d in inc_dirs]
@@ -329,7 +380,7 @@ def cuda(file: str, force: bool=False, **kwargs) -> Optional[Callable]:
                 # if all binary files are newer than all source files
                 # there are no changes that make compilation necessary
                 if binary_timestamp > max(source_timestamp):
-                    return func
+                    return result
 
             # get the source code
             if 'source' in kw_args:
@@ -340,7 +391,7 @@ def cuda(file: str, force: bool=False, **kwargs) -> Optional[Callable]:
                 with open(file, 'r') as fp:
                     source = fp.read()
             else:
-                raise FileNotFoundError(file)
+                return pxt.helpers.fallback(FileNotFoundError(file), result, fallback_enabled)
 
             # get compute capability of the architecture
             if 'arch' in kw_args:
@@ -364,13 +415,15 @@ def cuda(file: str, force: bool=False, **kwargs) -> Optional[Callable]:
             with open(binary_file, 'wb') as fp:
                 fp.write(binary)
 
-            return func
+            return result
 
     # ether use this function as a decorator or a normal function
     return wrapper if pxt.helpers.is_called_as_decorator() else wrapper(None)
 
 
-def cython(file: str, **kwargs) -> Union[Callable, str]:
+def cython(file: str,
+           enable_fallback: bool=False,
+           **kwargs) -> Union[Callable, str]:
     """
     Compile and build a Cython source code file into a dynamic library.
 
@@ -378,6 +431,8 @@ def cython(file: str, **kwargs) -> Union[Callable, str]:
     ----------
     file : str
         The Cython source file to be compiled as a dynamic library.
+    enable_fallback : Optional[bool]
+        Enable python function fallback in case of an error (default `False`).
     kwargs
         Additional arguments for the Extension class.
 
@@ -387,33 +442,38 @@ def cython(file: str, **kwargs) -> Union[Callable, str]:
         If called as a decorator, a wrapper function will be returned.
         Otherwise the path to the binary file will be returned.
     """
+
+    frame, _ = pxt.helpers.function_frame()
+
     def wrapper(func):
         global _kw_include_dirs, _pxt_includes
 
-        # make sure Cython is installed
-        if importlib.util.find_spec('Cython') is None:
-            raise RuntimeError('"Cython" module could not be found. Please '
-                               'make sure you have Cython installed.')
-
-        import Cython.Build
-
         # get the package name and folder of the decorated function
-        parent = inspect.currentframe().f_back
-        if func is None:
-            parent = parent.f_back
+        _, parent = pxt.helpers.function_frame(0 if func is not None else -1)
 
         # gather relevant compile path information
-        _, package_folder, tmp_folder = _get_build_infos(parent, file)
+        _, package_folder, tmp_folder = _get_build_info(parent, file)
         namespace = os.path.splitext(os.path.split(file)[1])[0]
+        binary_file = pxt.helpers.get_binary_name(file)
+        binary_name = os.path.split(binary_file)[1]
+        dst_path = os.path.join(package_folder, binary_name)
+        result = func if func is not None else dst_path
+
+        fallback_enabled = pxt.helpers.env_default(frame, 'ENABLE_FALLBACK', enable_fallback)
+
+        # make sure Cython is installed
+        if importlib.util.find_spec('Cython') is None:
+            return pxt.helpers.fallback(RuntimeError('"Cython" module could not be found. Please '
+                                        'make sure you have Cython installed.'),
+                                        result, fallback_enabled)
+
+        import Cython.Build
 
         # use keyword argument helper class
         kw_args = pxt.kwargs.KwArgs(kwargs)
         include_dirs = kw_args.append(_kw_include_dirs, _pxt_includes)
 
         with pxt.helpers.chdir(package_folder):
-            binary_file = pxt.helpers.get_binary_name(file)
-            binary_name = os.path.split(binary_file)[1]
-            dst_path = os.path.join(package_folder, binary_name)
 
             # compile the extension
             extension = distutils.core.Extension(namespace, sources=[file], **kw_args)
@@ -425,15 +485,16 @@ def cython(file: str, **kwargs) -> Union[Callable, str]:
             # directory to their destination folder
             tmp_path = pxt.helpers.recursive_file_search(tmp_folder, binary_name)
             if len(tmp_path) == 0:
-                raise FileNotFoundError('Could not find "{}" in the output folder "{}". '
-                                        'Compilation might have failed'.format(binary_name, tmp_folder))
+                return pxt.helpers.fallback(FileNotFoundError('Could not find "{}" in the output folder "{}". '
+                                            'Compilation might have failed'.format(binary_name, tmp_folder)),
+                                            result, fallback_enabled)
             shutil.copyfile(tmp_path[0], dst_path)
 
             # A new module has been created and should be immediately importable
             # by other modules. Hence, the import caches need to be invalidated.
             importlib.invalidate_caches()
 
-            return func if func is not None else dst_path
+            return result
 
     # ether use this function as a decorator or a normal function
     return wrapper if pxt.helpers.is_called_as_decorator() else wrapper(None)
@@ -458,7 +519,7 @@ def _find_c_include_files(source: str) -> List[str]:
     return [include[include.index('"') + 1:-1] for include in include_file_iter]
 
 
-def _get_build_infos(parent_frame: types.FrameType, path: str) -> Tuple[str, str, str]:
+def _get_build_info(parent_frame: types.FrameType, path: str) -> Tuple[str, str, str]:
     """
     Extract some commonly used build information from
     the provided input parameters.

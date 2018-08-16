@@ -25,23 +25,26 @@ def return_tuple(a: np.ndarray, b: np.ndarray) -> Tuple:
     raise NotImplementedError
 
 
-@pxt.link.mod(cpp_lib, function='no_func')
-def cpp_no_func(a: int, b: int) -> int:
-    return a + b
+try:
+    @pxt.link.mod(cpp_lib, function='no_func')
+    def cpp_no_func(a: int, b: int) -> int:
+        return a + b
+    raise AssertionError('"no_func" should not have been found in "{}"'.format(cpp_lib))
+except ValueError:
+    pass
 
 
 try:
     from pxt.cuda import In, Out
 
-    # 2) link the cuda kernel 'multiply' to the 'cu_multiply' function
-    #    set a default value for the grid size
-    #    pre-allocate a result object that will be returned by the function
+    pxt.build.cuda('cu/multiply.cu')
+
     @pxt.link.cuda('cu/multiply.cubin', function='multiply', grid=(1, 1),
-                   result_arg=0, result_object=np.empty((512,), dtype=np.float32))
-    # 1) build multiply.cu -> cu/multiply.cubin
+                   returns=(0, np.empty((512,), np.float32)))
     @pxt.build.cuda('cu/multiply.cu')
     def cu_multiply(a: In, b: In, **kwargs) -> np.ndarray:
         raise NotImplementedError
+
 except ImportError:
     pass
 
@@ -54,6 +57,6 @@ def rs_i_add(a: int, b: int) -> int:
     raise NotImplementedError
 
 
-@pxt.link.lib(rs_lib, function='i_no_add')
+@pxt.link.lib(rs_lib, function='i_no_add', enable_fallback=True)
 def rs_no_add(a: int, b: int) -> int:
     return a + b
