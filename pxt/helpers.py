@@ -288,9 +288,25 @@ def function_frame(back=0):
 
 
 def environ(*args):
+    def boolify(s):
+        s = s.lower()
+        if s == 'true':
+            return True
+        if s == 'false':
+            return False
+        raise ValueError
+
+    def autoconvert(s):
+        for fn in (boolify, int, float):
+            try:
+                return fn(s)
+            except ValueError:
+                pass
+        return s
+
     for arg in args[:-1]:
         if isinstance(arg, str) and arg in os.environ:
-            return os.environ[arg]
+            return autoconvert(os.environ[arg])
     return args[-1]
 
 
