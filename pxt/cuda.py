@@ -135,7 +135,7 @@ class BinModule(pycuda.compiler.CudaModule):
         self._bind_module()
 
 
-class CudaFunction(object):
+class CudaFunction:
     """
     A helper class to automatically convert function arguments from
     python types to pycuda compatible objects.
@@ -167,9 +167,13 @@ class CudaFunction(object):
             for j, i in enumerate(sort_index):
                 self._return_order[i] = j
 
+        import inspect
+        members = inspect.getmembers(func, predicate=inspect.ismethod)
+        _ = [setattr(self, m[0], m[1]) for m in members if m[0][0] != '_']
+
     def __call__(self, *args, **kwargs):
         # convert input arguments to c compatible types
-        cu_args = [arg if isinstance(arg, pycuda.driver.ArgumentHandler) else arg2cu(arg)
+        cu_args = [arg if isinstance(arg, pycuda.driver.ArgumentHandler) or arg2cu is None else arg2cu(arg)
                    for arg2cu, arg in zip(self._arg2cu, args)]
         for i, m in zip(self._return_idx, self._return_mem):
             cu_args.insert(i, m)
