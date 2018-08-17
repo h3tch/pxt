@@ -37,10 +37,7 @@ except ValueError:
 try:
     from pxt.cuda import In, Out
 
-    pxt.build.cuda('cu/multiply.cu')
-
-    @pxt.link.cuda('cu/multiply.cubin', function='multiply', grid=(1, 1),
-                   returns=(0, np.empty((512,), np.float32)))
+    @pxt.link.cuda('cu/multiply.cubin', function='multiply', grid=(1, 1), returns=(0, np.empty((512,), np.float32)))
     @pxt.build.cuda('cu/multiply.cu')
     def cu_multiply(a: In, b: In, **kwargs) -> np.ndarray:
         raise NotImplementedError
