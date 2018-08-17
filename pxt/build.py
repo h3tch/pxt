@@ -72,7 +72,7 @@ def rust(cargo_file: str,
         The RUST source file to be compiled as a dynamic library.
     name : Optional[str]
         The module name. If `None` (default) the name of specified in
-        `Cargo.toml` will be used. If no name is specified in `Cargo.toml`,
+        `Cargo.toml` will be used.
     force : Optional[bool]
         Fore the file to be compiled if `True`. Otherwise only compile
         if there are any changes (default `False`).
@@ -122,6 +122,9 @@ def rust(cargo_file: str,
 
         # gather relevant compile path information
         _, package_folder, tmp_path = _get_build_info(parent, cargo_file)
+        cargo_path = os.path.split(cargo_file)[0]
+        if os.path.isabs(cargo_path):
+            cargo_path = os.path.relpath(cargo_path, package_folder)
 
         # Change the current working directory to the package folder.
         # This way, the build function can be used the same way by
@@ -129,8 +132,7 @@ def rust(cargo_file: str,
         with pxt.helpers.chdir(package_folder):
             # Use the module name specified in the Cargo.toml file
             # if no name is provided by the user.
-            namespace = name
-            if namespace is None:
+            if name is None:
                 # make sure toml is installed
                 if importlib.util.find_spec('toml') is None:
                     raise RuntimeError('"toml" module could not be found. Please '
@@ -138,16 +140,19 @@ def rust(cargo_file: str,
                 import toml
                 config = toml.load(cargo_file)
                 if 'lib' in config and 'name' in config['lib']:
-                    namespace = config['lib']['name']
+                    lib_name = config['lib']['name']
+                else:
+                    raise KeyError('Cargo file does not specify a `name` in `[lib]`.')
+            else:
+                lib_name = name
 
             # get binary file path
-            binary_file = pxt.helpers.get_binary_name(os.path.join(package_folder, namespace))
+            binary_file = pxt.helpers.get_binary_name(os.path.join(package_folder, cargo_path, lib_name))
             result = func if func is not None else binary_file
 
             # only check for changes if compilation should not be forced
             if not force_enabled:
                 # get source file path
-                binary_file = pxt.helpers.get_binary_name(os.path.join(package_folder, namespace))
                 source_files = pxt.helpers.recursive_file_search(ext=['rs', 'toml'])
 
                 # get target and source file timestamps
@@ -159,17 +164,18 @@ def rust(cargo_file: str,
                 if binary_timestamp > max(source_timestamp):
                     return result
 
-            # evaluate the binding keyword argument for the rust-python binding to be used
-            kwargs['binding'] = object2binding(kwargs['binding'] if 'binding' in kwargs else None)
-
             # make sure setuptools_rust is installed
             if importlib.util.find_spec('setuptools_rust') is None:
                 return pxt.helpers.fallback(RuntimeError('"setuptools_rust" module could not be found. Please '
                                             'make sure you have "setuptools-rust" installed.'),
                                             result, fallback_enabled)
 
-            # build the rust extension
+            # evaluate the binding keyword argument for the rust-python binding to be used
             import setuptools_rust
+            kwargs['binding'] = object2binding(kwargs['binding'] if 'binding' in kwargs else None)
+
+            # build the rust extension
+            namespace = os.path.join(cargo_path, lib_name).replace(os.path.sep, '.')
             extension = setuptools_rust.RustExtension(namespace, cargo_file, **kwargs)
             setuptools.setup(script_args=['build_ext', '--build-temp={}'.format(tmp_path),
                                           '--force', '--inplace'],
@@ -225,7 +231,7 @@ def cpp(file: str,
 
         binary_file = pxt.helpers.get_binary_name(file)
         binary_name = os.path.split(binary_file)[1]
-        dst_path = os.path.join(package_folder, binary_name)
+        dst_path = os.path.join(package_folder, binary_file)
         result = func if func is not None else dst_path
 
         with pxt.helpers.chdir(package_folder):
