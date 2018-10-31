@@ -188,27 +188,27 @@ public:
         return result;
     }
 
-    inline NpyType type()
+    inline NpyType type() const
     {
         return (NpyType)PyArray_TYPE(numpy_array);
     }
 
-    inline PyArray_Descr* dtype()
+    inline PyArray_Descr* dtype() const
     {
         return PyArray_DTYPE(numpy_array);
     }
 
-    inline int ndim()
+    inline int ndim() const
     {
         return PyArray_NDIM(numpy_array);
     }
 
-    inline npy_intp* shape()
+    inline npy_intp* shape() const
     {
         return PyArray_SHAPE(numpy_array);
     }
 
-    inline int shape(int i)
+    inline int shape(int i) const
     {
         return (int)PyArray_DIM(numpy_array, i);
     }
@@ -223,17 +223,17 @@ public:
         return *(T*)PyArray_GetPtr(numpy_array, ptr);
     }
 
-    inline int element_size(NpyType type)
+    inline int element_size(NpyType type) const
     {
         return (int)PyArray_ITEMSIZE(numpy_array);
     }
 
-    inline int size()
+    inline int size() const
     {
         return (int)PyArray_SIZE(numpy_array);
     }
 
-    inline int nbytes()
+    inline int nbytes() const
     {
         return (int)PyArray_NBYTES(numpy_array);
     }
@@ -243,10 +243,21 @@ public:
         return PyArray_DATA(numpy_array);
     }
 
+    inline const void* data() const
+    {
+        return (const void*)PyArray_DATA(numpy_array);
+    }
+
     template<typename T>
     inline T* cast()
     {
         return (T*)PyArray_DATA(numpy_array);
+    }
+
+    template<typename T>
+    inline const T* cast() const
+    {
+        return (const T*)PyArray_DATA(numpy_array);
     }
 
     int refcount()
@@ -345,6 +356,13 @@ void args2tuple(std::vector<PyObject*>& result, T value, Args... args)
     args2tuple(result, args...);
 }
 
+template<typename T, typename... Args>
+void args2vector(std::vector<T>& result, T value, Args... args)
+{
+    result.push_back(value);
+    args2vector(result, args...);
+}
+
 
 // Convert a list of C and PXT types into a Python compatible
 // result object. The number of arguments can vary.
@@ -370,9 +388,11 @@ PyObject* PyResult(Args... args)
     return tuple;
 }
 
+
 // Utility macro to return a value and exit the function in case an error occurred.
 #define PyReturnOnErr(return_value) { if (PyErr_Occurred()) { return return_value; } }
 
 #define PyReturnErr(err_type, err_message, return_value) { PyErr_SetString(err_type, err_message); return return_value; }
+
 
 #endif

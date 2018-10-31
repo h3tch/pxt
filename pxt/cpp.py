@@ -13,6 +13,7 @@ py2ctype = {
     tuple: ctypes.py_object,
     list: ctypes.py_object,
     dict: ctypes.py_object,
+    object: ctypes.py_object,
     np.ndarray: ctypes.py_object,
 }
 
