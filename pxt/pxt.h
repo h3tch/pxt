@@ -174,7 +174,7 @@ public:
 //        std::cout << "~NpyArray Refcount new - " << this->refcount() << std::endl;
     }
 
-    static NpyArray empty_like(NpyArray& other)
+    static NpyArray empty_like(const NpyArray& other)
     {
         return NpyArray(other.type(), other.ndim(), other.shape());
     }
