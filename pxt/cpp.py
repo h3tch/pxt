@@ -56,13 +56,20 @@ dtypeid_dtype = {
 }
 
 
+def _key_or_default(kwargs, key, default):
+    try:
+        return kwargs[key]
+    except KeyError:
+        return default
+
+
 class CTypeConverter(object):
     """
     A helper class to automatically convert function arguments from
     python types to C types and the result C type back into a python type.
     """
 
-    def __init__(self, function_pointer, arg_types, arg_default, result_type):
+    def __init__(self, function_pointer, arg_names, arg_types, arg_default, result_type):
         """
         Constructor.
 
@@ -85,6 +92,7 @@ class CTypeConverter(object):
 
         # set input argument types
         self._function.argtypes = [py2ctype[py_type] for py_type in arg_types]
+        self._arg_names = arg_names
         self._arg_default = arg_default
 
         # set result type
@@ -95,7 +103,11 @@ class CTypeConverter(object):
         else:
             self._function.restype = result_type
 
-    def __call__(self, *args):
-        args = args + self._arg_default[len(args):]
+    def __call__(self, *args, **kwargs):
+        if len(args) < len(self._arg_default):
+            defaults = tuple(_key_or_default(kwargs, name, default)
+                             for default, name in zip(self._arg_default[len(args):],
+                                                      self._arg_names[len(args):]))
+            args = args + defaults
         result = self._function(*args)
         return result

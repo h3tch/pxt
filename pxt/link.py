@@ -144,11 +144,12 @@ def lib(library: str,
         if function_pointer is not None:
             sig = inspect.signature(func)
             # Extract the argument types of the function.
-            arg_types = [sig.parameters[name].annotation for name in sig.parameters]
-            arg_default = tuple(sig.parameters[name].default for name in sig.parameters)
+            arg_names = [name for name in sig.parameters]
+            arg_types = [sig.parameters[name].annotation for name in arg_names]
+            arg_default = tuple(sig.parameters[name].default for name in arg_names)
             # Extract the return type of the function.
             result_type = sig.return_annotation
-            return pxt.cpp.CTypeConverter(function_pointer, arg_types, arg_default, result_type)
+            return pxt.cpp.CTypeConverter(function_pointer, arg_names, arg_types, arg_default, result_type)
 
         # No suitable function could be found.
         # Raise an exception or continue using the decorated
