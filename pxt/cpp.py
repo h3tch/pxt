@@ -1,4 +1,5 @@
 import ctypes
+import inspect
 import typing
 
 import numpy as np
@@ -15,6 +16,7 @@ py2ctype = {
     dict: ctypes.py_object,
     object: ctypes.py_object,
     np.ndarray: ctypes.py_object,
+    ctypes.c_void_p: ctypes.c_void_p
 }
 
 # Map numpy type IDs to C types.
@@ -94,12 +96,15 @@ class CTypeConverter(object):
         self._function.argtypes = [py2ctype[py_type] for py_type in arg_types]
         self._arg_names = arg_names
         self._arg_default = arg_default
+        self._result_type = result_type
 
         # set result type
         if result_type in py2ctype:
             self._function.restype = py2ctype[result_type]
         elif isinstance(result_type, typing.TupleMeta):
             self._function.restype = ctypes.py_object
+        elif result_type is inspect._empty:
+            self._function.restype = None
         else:
             self._function.restype = result_type
 
@@ -109,5 +114,8 @@ class CTypeConverter(object):
                              for default, name in zip(self._arg_default[len(args):],
                                                       self._arg_names[len(args):]))
             args = args + defaults
+
         result = self._function(*args)
-        return result
+
+        if self._result_type is not inspect._empty:
+            return result
