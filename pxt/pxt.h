@@ -79,6 +79,9 @@ public:
     NpyArray(NpyType type, int ndim, uint32_t* dims, void* data=0);
     ~NpyArray();
 
+    inline bool valid();
+    inline const bool valid() const;
+
     static NpyArray empty_like(const NpyArray& other);
 
     inline PyObject* py_return();

@@ -25,7 +25,7 @@ PyGIL::~PyGIL()
 ///
 /// \brief  Create an invalid NpyArray that does not point to a numpy array.
 ///
-NpyArray::NpyArray() : numpy_array(0)
+NpyArray::NpyArray() : numpy_array(nullptr)
 {
 }
 
@@ -101,6 +101,18 @@ NpyArray::NpyArray(NpyType type, int ndim, uint32_t* dims, void* data) : NpyArra
 NpyArray::~NpyArray()
 {
     this->decref();
+}
+
+
+bool NpyArray::valid()
+{
+    return numpy_array != nullptr;
+}
+
+
+const bool NpyArray::valid() const
+{
+    return numpy_array != nullptr;
 }
 
 
