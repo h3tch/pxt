@@ -18,6 +18,7 @@ import pxt.kwargs
 
 _kw_source = 'source'
 _kw_include_dirs = 'include_dirs'
+_kw_library_dirs = 'library_dirs'
 _cpp_include_pattern = re.compile(r'^\s*#include\s+"[^"]*"', re.MULTILINE)
 _pxt_includes = [os.path.abspath(os.path.join(os.path.dirname(__file__), '..')),
                  np.get_include()]
@@ -217,7 +218,7 @@ def cpp(file: str,
 
     # the function wrapper to be returned in case the `cpp` function is used as a decorator
     def wrapper(func):
-        global _kw_include_dirs, _pxt_includes
+        global _kw_include_dirs, _kw_library_dirs, _pxt_includes
 
         # get the package name and folder of the decorated function
         _, parent = pxt.helpers.function_frame(0 if func is not None else -1)
@@ -256,8 +257,11 @@ def cpp(file: str,
 
                 # add pxt include directories
                 include_dirs = kw_args.append(_kw_include_dirs, _pxt_includes)
+                library_dirs = kw_args.try_get(_kw_library_dirs, default=[])
                 kw_args[_kw_include_dirs] = [_module_dir(d) if isinstance(d, types.ModuleType) else d
                                              for d in include_dirs]
+                kw_args[_kw_library_dirs] = [_module_dir(d) if isinstance(d, types.ModuleType) else d
+                                             for d in library_dirs]
 
                 # create distutils extension
                 extension = distutils.core.Extension(namespace, sources=[file], **kw_args)

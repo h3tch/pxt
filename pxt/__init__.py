@@ -1,13 +1,11 @@
 import importlib.util
+import os
 
 import pxt.build
 import pxt.cpp
 import pxt.helpers
 import pxt.kwargs
 import pxt.link
-
-#if importlib.util.find_spec('pycuda') is not None:
-#    import pxt.cuda
 
 
 def imp(filename, module_name=None):
@@ -33,3 +31,7 @@ def imp(filename, module_name=None):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def module_path(module):
+    return os.path.split(module.__file__)[0]
